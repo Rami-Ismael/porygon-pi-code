@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Win rate against the top 50 — distribution</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--surface:#fcfcfb;--page:#f9f9f7;--ink:#0b0b0b;--ink2:#52514e;--ink3:#8a8985;--grid:#ebebe8;
+ --series:#2a78d6;--series-hover:#3987e5;--rule:#e2e1dd}
+@media(prefers-color-scheme:dark){:root{--surface:#1a1a19;--page:#0d0d0d;--ink:#fff;--ink2:#c3c2b7;
+ --ink3:#8b8a83;--grid:#2a2a28;--series:#3987e5;--series-hover:#5598e7;--rule:#2f2f2d}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--page);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;
+ line-height:1.5;padding:clamp(1.2rem,4vw,3rem);max-width:1100px;margin:0 auto}
+h1{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:clamp(1.3rem,3vw,1.9rem);letter-spacing:-.02em}
+.lede{color:var(--ink2);max-width:66ch;margin:.3rem 0 1.6rem;font-size:.92rem}
+.controls{display:flex;gap:.6rem;align-items:center;margin-bottom:1.4rem;font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink2)}
+.controls button{background:var(--surface);color:var(--ink);border:1px solid var(--rule);border-radius:3px;
+ padding:.4rem .7rem;font:inherit;cursor:pointer}
+.controls button[aria-pressed=true]{border-color:var(--series);color:var(--series)}
+.controls button:focus-visible{outline:2px solid var(--series);outline-offset:2px}
+section{background:var(--surface);border:1px solid var(--rule);border-radius:4px;padding:1.1rem 1.2rem 1rem;margin-bottom:1.6rem}
+h2{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:1.05rem;letter-spacing:-.01em}
+.sub{color:var(--ink2);font-size:.85rem;margin:.1rem 0 1rem}
+.panel{display:grid;grid-template-columns:minmax(150px,220px) 1fr;gap:.9rem;align-items:end;
+ padding:.35rem 0;border-top:1px solid var(--grid)}
+@media(max-width:720px){.panel{grid-template-columns:1fr;gap:.2rem}.lab{padding-bottom:.2rem}}
+.panel:first-of-type{border-top:0}
+.panel.total{border-top:0;padding-bottom:.7rem;margin-bottom:.35rem;border-bottom:1px solid var(--rule)}
+.lab{font-size:.82rem;line-height:1.3;padding-bottom:.7rem}
+.lab b{display:block;font-weight:600}
+.lab small{display:block;color:var(--ink3);font-family:"IBM Plex Mono",monospace;font-size:.66rem;margin-top:.15rem}
+svg{display:block;width:100%;height:96px;overflow:visible}
+.chart{min-width:0}
+.bar{fill:var(--series);cursor:default}
+.bar:hover,.bar:focus{fill:var(--series-hover);outline:none}
+.bar:focus-visible{stroke:var(--ink);stroke-width:1}
+.grid line{stroke:var(--grid);stroke-width:1}
+.axis text{fill:var(--ink3);font-family:"IBM Plex Mono",monospace;font-size:10px}
+.peak{fill:var(--ink2);font-family:"IBM Plex Mono",monospace;font-size:10px}
+.ref line{stroke:var(--ink2);stroke-width:1}
+.ref text{fill:var(--ink2);font-family:"IBM Plex Mono",monospace;font-size:10px}
+#tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--surface);font-family:"IBM Plex Mono",monospace;
+ font-size:.7rem;padding:.4rem .55rem;border-radius:3px;display:none;z-index:9;white-space:nowrap;line-height:1.35}
+table{border-collapse:collapse;width:100%;font-family:"IBM Plex Mono",monospace;font-size:.7rem;margin-top:.6rem}
+th,td{text-align:right;padding:.25rem .45rem;border-bottom:1px solid var(--grid)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--ink2);font-weight:500}
+.hidden{display:none}
+.foot{color:var(--ink3);font-size:.78rem;margin-top:.5rem;max-width:72ch}
+</style></head>
+<body>
+<h1>Win rate against the top 50 — distribution</h1>
+<p class="lede">Every team played <b>24 battles</b> against opponents drawn from the top-50 meta pool, both sides piloted by
+the behaviour-cloning policy. A win rate is therefore one of 25 exact values, and each bar below is one of them —
+no smoothing. Panels share the x-axis; y-scales are per panel and the peak count is labelled.</p>
+<div class="controls" role="group" aria-label="View">
+  <span>view</span>
+  <button id="bChart" aria-pressed="true">chart</button>
+  <button id="bTable" aria-pressed="false">table</button>
+</div>
+<div id="root"></div>
+<div id="tip" role="tooltip"></div>
+<script>
+const DATA = [{"title": "Corruption ladder", "sub": "real teams with k of six candidates replaced by random legal ones", "total": {"n": 2450, "counts": [449, 303, 191, 171, 149, 161, 132, 125, 148, 127, 122, 101, 76, 78, 48, 25, 20, 15, 6, 1, 2, 0, 0, 0, 0], "mean": 0.21494897959183676}, "groups": [{"key": "k0", "label": "real team, untouched", "n": 350, "counts": [0, 0, 2, 2, 4, 7, 4, 22, 33, 31, 43, 43, 33, 48, 28, 14, 15, 12, 6, 1, 2, 0, 0, 0, 0], "mean": 0.4664285714285714, "median": 0.4583333333333333, "p90": 0.6666666666666666}, {"key": "k1", "label": "1 of 6 candidates randomised", "n": 350, "counts": [0, 2, 3, 8, 15, 24, 30, 27, 42, 48, 43, 34, 29, 17, 14, 8, 3, 3, 0, 0, 0, 0, 0, 0, 0], "mean": 0.3734523809523809, "median": 0.375, "p90": 0.5416666666666666}, {"key": "k2", "label": "2 of 6 candidates randomised", "n": 350, "counts": [2, 7, 17, 24, 34, 40, 46, 41, 41, 28, 22, 18, 9, 12, 4, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0], "mean": 0.28654761904761905, "median": 0.2916666666666667, "p90": 0.4583333333333333}, {"key": "k3", "label": "3 of 6 candidates randomised", "n": 350, "counts": [12, 34, 45, 50, 51, 42, 33, 22, 21, 14, 14, 4, 5, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "mean": 0.19273809523809524, "median": 0.16666666666666666, "p90": 0.375}, {"key": "k4", "label": "4 of 6 candidates randomised", "n": 350, "counts": [46, 73, 54, 56, 35, 41, 16, 11, 10, 6, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "mean": 0.12178571428571429, "median": 0.125, "p90": 0.25}, {"key": "k5", "label": "5 of 6 candidates randomised", "n": 350, "counts": [141, 104, 55, 27, 10, 7, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "mean": 0.048809523809523817, "median": 0.041666666666666664, "p90": 0.125}, {"key": "k6", "label": "all 6 randomised (random legal team)", "n": 350, "counts": [248, 83, 15, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "mean": 0.01488095238095238, "median": 0.0, "p90": 0.041666666666666664}], "ref": 0.4583333333333333, "ref_label": "median untouched real team"}, {"title": "Search-move strata", "sub": "real teams altered by the moves a search would actually make", "total": {"n": 2400, "counts": [260, 111, 83, 80, 81, 97, 123, 147, 158, 181, 194, 191, 194, 168, 132, 97, 50, 26, 18, 8, 1, 0, 0, 0, 0], "mean": 0.33993055555555557}, "groups": [{"key": "real", "label": "real team, untouched", "n": 300, "counts": [0, 0, 1, 5, 3, 5, 11, 17, 29, 25, 26, 33, 29, 31, 30, 25, 8, 8, 9, 5, 0, 0, 0, 0, 0], "mean": 0.4702777777777778, "median": 0.4583333333333333, "p90": 0.6291666666666677}, {"key": "shuffled", "label": "spreads shuffled within species", "n": 300, "counts": [0, 1, 3, 3, 8, 7, 15, 25, 21, 25, 22, 31, 40, 28, 24, 18, 18, 7, 3, 1, 0, 0, 0, 0, 0], "mean": 0.44888888888888895, "median": 0.4583333333333333, "p90": 0.625}, {"key": "slotcopy1", "label": "1 candidate pasted from another real team", "n": 300, "counts": [0, 0, 1, 1, 4, 7, 15, 31, 22, 30, 33, 40, 32, 38, 21, 13, 9, 2, 1, 0, 0, 0, 0, 0, 0], "mean": 0.43638888888888894, "median": 0.4583333333333333, "p90": 0.5833333333333334}, {"key": "slotcopy2", "label": "2 candidates pasted", "n": 300, "counts": [0, 1, 2, 2, 8, 12, 19, 18, 25, 29, 31, 38, 36, 24, 24, 15, 9, 4, 1, 1, 1, 0, 0, 0, 0], "mean": 0.4313888888888889, "median": 0.4583333333333333, "p90": 0.625}, {"key": "slotcopy3", "label": "3 candidates pasted", "n": 300, "counts": [0, 0, 4, 3, 9, 16, 20, 21, 24, 40, 43, 26, 29, 22, 17, 15, 3, 5, 3, 0, 0, 0, 0, 0, 0], "mean": 0.41000000000000003, "median": 0.4166666666666667, "p90": 0.5833333333333334}, {"key": "modeledit", "label": "1 candidate regenerated by the model", "n": 300, "counts": [0, 1, 4, 8, 14, 22, 25, 26, 31, 26, 38, 23, 27, 24, 16, 10, 3, 0, 1, 1, 0, 0, 0, 0, 0], "mean": 0.38069444444444445, "median": 0.375, "p90": 0.5833333333333334}, {"key": "invent", "label": "whole team from the model, constrained", "n": 300, "counts": [38, 50, 52, 54, 35, 28, 18, 9, 6, 6, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], "mean": 0.1276388888888889, "median": 0.125, "p90": 0.25}, {"key": "random", "label": "random legal team", "n": 300, "counts": [222, 58, 16, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], "mean": 0.014166666666666666, "median": 0.0, "p90": 0.041666666666666664}], "ref": 0.4583333333333333, "ref_label": "median untouched real team"}];
+const NB = 24, H = 96, PADL = 6, PADR = 6, PADB = 4;
+let W = 760;
+const $ = s => document.querySelector(s);
+const tip = $("#tip");
+const fmtWr = i => (i / NB).toFixed(3);
+
+function panelSVG(g, ref, refLabel, withAxis) {
+  const max = Math.max(...g.counts), plotH = H - (withAxis ? 18 : 0);
+  const slot = (W - PADL - PADR) / (NB + 1), bw = Math.min(24, slot - 2);
+  const y = c => plotH - PADB - (c / max) * (plotH - 14);
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `${g.label}: histogram of win rate over ${g.n} teams`);
+  // gridlines: 2 recessive hairlines
+  const grid = document.createElementNS(ns, "g"); grid.setAttribute("class", "grid");
+  [0.5, 1].forEach(f => { const l = document.createElementNS(ns, "line");
+    const yy = y(max * f); l.setAttribute("x1", PADL); l.setAttribute("x2", W - PADR);
+    l.setAttribute("y1", yy); l.setAttribute("y2", yy); grid.appendChild(l); });
+  svg.appendChild(grid);
+  // reference: median untouched real team
+  if (ref != null) {
+    const rg = document.createElementNS(ns, "g"); rg.setAttribute("class", "ref");
+    const x = PADL + (ref * NB + 0.5) * slot;
+    const l = document.createElementNS(ns, "line");
+    l.setAttribute("x1", x); l.setAttribute("x2", x); l.setAttribute("y1", 2); l.setAttribute("y2", plotH - PADB);
+    rg.appendChild(l);
+    if (refLabel) { const t = document.createElementNS(ns, "text"); t.setAttribute("x", x + 4); t.setAttribute("y", 10);
+      t.textContent = refLabel + " " + ref.toFixed(3); rg.appendChild(t); }
+    svg.appendChild(rg);
+  }
+  // bars
+  const peak = g.counts.indexOf(max);
+  g.counts.forEach((c, i) => {
+    if (!c) return;
+    const x = PADL + i * slot + (slot - bw) / 2, top = y(c), h = plotH - PADB - top;
+    const r = Math.min(4, h / 2);
+    const p = document.createElementNS(ns, "path"); p.setAttribute("class", "bar"); p.setAttribute("tabindex", "0");
+    p.setAttribute("d", `M${x},${top + r} a${r},${r} 0 0 1 ${r},-${r} h${bw - 2 * r} a${r},${r} 0 0 1 ${r},${r} v${h - r} h-${bw} z`);
+    const show = ev => { tip.style.display = "block";
+      tip.textContent = ""; const l1 = document.createElement("div"); l1.textContent = `win rate ${fmtWr(i)}  (${i} of 24)`;
+      const l2 = document.createElement("div"); l2.textContent = `${c} teams · ${(100 * c / g.n).toFixed(1)}% of ${g.label}`;
+      tip.appendChild(l1); tip.appendChild(l2);
+      const px = ev.clientX ?? p.getBoundingClientRect().left, py = ev.clientY ?? p.getBoundingClientRect().top;
+      tip.style.left = (px + 12) + "px"; tip.style.top = (py - 34) + "px"; };
+    p.addEventListener("pointermove", show); p.addEventListener("focus", show);
+    p.addEventListener("pointerleave", () => tip.style.display = "none"); p.addEventListener("blur", () => tip.style.display = "none");
+    svg.appendChild(p);
+    if (i === peak) { const t = document.createElementNS(ns, "text"); t.setAttribute("class", "peak");
+      t.setAttribute("x", x + bw / 2); t.setAttribute("text-anchor", "middle"); t.setAttribute("y", top - 3); t.textContent = c; svg.appendChild(t); }
+  });
+  if (withAxis) {
+    const ax = document.createElementNS(ns, "g"); ax.setAttribute("class", "axis");
+    [0, 6, 12, 18, 24].forEach(i => { const t = document.createElementNS(ns, "text");
+      t.setAttribute("x", PADL + (i + 0.5) * slot); t.setAttribute("y", H - 3); t.setAttribute("text-anchor", "middle");
+      t.textContent = (i / NB).toFixed(2); ax.appendChild(t); });
+    svg.appendChild(ax);
+  }
+  return svg;
+}
+
+const REDRAW = [];
+function panel(g, ref, refLabel, cls, withAxis) {
+  const d = document.createElement("div"); d.className = "panel " + cls;
+  const lab = document.createElement("div"); lab.className = "lab";
+  const b = document.createElement("b"); b.textContent = g.label; lab.appendChild(b);
+  const s = document.createElement("small"); s.textContent = `n ${g.n} · mean ${g.mean.toFixed(3)}` + (g.median != null ? ` · median ${g.median.toFixed(3)}` : ""); lab.appendChild(s);
+  d.appendChild(lab);
+  const holder = document.createElement("div"); holder.className = "holder"; d.appendChild(holder);
+  const draw = () => { W = Math.max(280, Math.round(holder.getBoundingClientRect().width || 760));
+    holder.textContent = ""; holder.appendChild(panelSVG(g, ref, refLabel, withAxis)); };
+  REDRAW.push(draw); return d;
+}
+
+function table(sec) {
+  const t = document.createElement("table");
+  const thead = document.createElement("thead"), tr = document.createElement("tr");
+  ["win rate", "wins /24", ...sec.groups.map(g => g.key)].forEach(h => { const th = document.createElement("th"); th.textContent = h; tr.appendChild(th); });
+  thead.appendChild(tr); t.appendChild(thead);
+  const tb = document.createElement("tbody");
+  for (let i = 0; i <= NB; i++) { const r = document.createElement("tr");
+    [fmtWr(i), String(i), ...sec.groups.map(g => String(g.counts[i]))].forEach(v => { const td = document.createElement("td"); td.textContent = v; r.appendChild(td); });
+    tb.appendChild(r); }
+  t.appendChild(tb); return t;
+}
+
+const root = $("#root");
+DATA.forEach(sec => {
+  const s = document.createElement("section");
+  const h = document.createElement("h2"); h.textContent = `${sec.title} — ${sec.total.n.toLocaleString()} labelled teams`; s.appendChild(h);
+  const p = document.createElement("p"); p.className = "sub"; p.textContent = sec.sub; s.appendChild(p);
+  const chart = document.createElement("div"); chart.className = "chart";
+  chart.appendChild(panel({label: "all teams in this dataset", n: sec.total.n, counts: sec.total.counts, mean: sec.total.mean}, sec.ref, sec.ref_label, "total", false));
+  sec.groups.forEach((g, i) => chart.appendChild(panel(g, sec.ref, null, "", i === sec.groups.length - 1)));
+  s.appendChild(chart);
+  const tv = table(sec); tv.className = "hidden"; s.appendChild(tv);
+  const f = document.createElement("p"); f.className = "foot";
+  f.textContent = `The vertical rule marks the ${sec.ref_label} (${sec.ref.toFixed(3)}). Each panel's y-axis is its own; the number above the tallest bar is that panel's peak count.`;
+  s.appendChild(f); root.appendChild(s);
+});
+function setView(tbl) {
+  document.querySelectorAll(".chart").forEach(e => e.classList.toggle("hidden", tbl));
+  document.querySelectorAll("table").forEach(e => e.classList.toggle("hidden", !tbl));
+  $("#bChart").setAttribute("aria-pressed", String(!tbl)); $("#bTable").setAttribute("aria-pressed", String(tbl));
+}
+$("#bChart").onclick = () => setView(false); $("#bTable").onclick = () => setView(true);
+REDRAW.forEach(f => f());
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => REDRAW.forEach(f => f()), 120); });
+</script></body></html>

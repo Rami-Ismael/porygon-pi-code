@@ -1,0 +1,51 @@
+"""One shard of a labelling campaign, on a single Showdown server.
+
+Each team plays N battles against an opponent who draws a FRESH team from the top-50
+meta pool every battle (RandomTeamBuilder.yield_team samples uniformly). That is the
+same quantity as "win rate against the meta" but costs one player-pair setup per
+team instead of one per opponent — the pilot showed setup overhead, not simulation,
+was the bottleneck (10.5 battles/sec at 2 battles per call vs 63 at 50).
+"""
+import asyncio, json, os, sys
+from pathlib import Path
+import torch
+from poke_env.ps_client import ServerConfiguration, AccountConfiguration
+from stable_baselines3 import PPO
+from vgc_bench.src.policy_player import BatchPolicyPlayer
+from vgc_bench.src.teams import RandomTeamBuilder
+from vgc_bench.src.utils import format_map
+
+async def score_one(pol, team, opps, n, conc, port):
+    srv = ServerConfiguration(f"ws://localhost:{port}/showdown/websocket",
+                              "https://play.pokemonshowdown.com/action.php?")
+    kw = dict(server_configuration=srv, battle_format=format_map["mb"], log_level=40,
+              max_concurrent_battles=conc, accept_open_team_sheet=True, open_timeout=None)
+    tag = os.urandom(4).hex()
+    a = BatchPolicyPlayer(policy=pol, account_configuration=AccountConfiguration(f"a{tag}", None),
+                          team=RandomTeamBuilder(1, None, "mb", custom_team_paths=[Path(team)]), **kw)
+    b = BatchPolicyPlayer(policy=pol, account_configuration=AccountConfiguration(f"b{tag}", None),
+                          team=RandomTeamBuilder(1, None, "mb",
+                                                 custom_team_paths=[Path(o) for o in opps]), **kw)
+    await a.battle_against(b, n_battles=n)
+    w = sum(1 for x in a.battles.values() if x.won)
+    f = a.n_finished_battles
+    for p in (a, b):
+        try: await p.ps_client.stop_listening()
+        except Exception: pass
+    return w, f
+
+def main():
+    spec = json.load(open(sys.argv[1])); out = sys.argv[2]
+    port, nb, conc = spec["port"], spec["battles"], spec["conc"]
+    pol = PPO.load("/tmp/bc_100.zip", device=torch.device("cpu")).policy
+    res = {}
+    for team, opps in spec["jobs"]:
+        w, n = asyncio.run(score_one(pol, team, opps, nb, conc, port))
+        r = w / max(n, 1)
+        res[team] = {"wins": w, "battles": n, "win_rate": round(r, 4),
+                     "se": round((r * (1 - r) / max(n, 1)) ** .5, 4)}
+        json.dump(res, open(out, "w"))
+    json.dump(res, open(out, "w"))
+
+if __name__ == "__main__":
+    main()

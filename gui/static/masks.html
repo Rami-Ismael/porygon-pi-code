@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mask shapes — what the model is asked to fill in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0E1319;--panel:#151C24;--rule:#28323E;--paper:#EDE9E1;--paper-rule:#D3CCC0;
+ --paper-ink:#1A1714;--signal:#5BD6A4;--dim:#7D8998;--bright:#DDE4EC;--warn:#E0705A}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--ink);color:var(--bright);font-family:"IBM Plex Sans",system-ui,sans-serif;
+ line-height:1.55;padding:clamp(1.2rem,4vw,3rem);max-width:1180px;margin:0 auto}
+h1{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:clamp(1.4rem,3.4vw,2rem);
+ letter-spacing:-.025em;margin-bottom:.4rem}
+h1 span{color:var(--signal)}
+.lede{color:var(--dim);max-width:62ch;margin-bottom:2.4rem;font-size:.95rem}
+.lede b{color:var(--bright);font-weight:500}
+.strip{background:var(--panel);border:1px solid var(--rule);border-radius:4px;
+ padding:1.1rem 1.2rem 1.3rem;margin-bottom:2.2rem}
+.strip h2{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:1rem;margin-bottom:.3rem}
+.strip .sub{color:var(--dim);font-size:.85rem;max-width:70ch;margin-bottom:1.1rem}
+.film{display:grid;grid-template-columns:repeat(6,1fr);gap:.5rem}
+@media(max-width:760px){.film{grid-template-columns:repeat(3,1fr)}}
+.frame{background:var(--paper);padding:.4rem;border-radius:2px;position:relative}
+.frame.pick{outline:2px solid var(--signal);outline-offset:2px}
+.frame table{border-collapse:collapse;width:100%}
+.frame td{height:.5rem;border:1px solid var(--paper-rule);background:#F7F5F0;padding:0}
+.frame td.m{background:var(--signal);border-color:#3FA37C}
+.ft{font-family:"IBM Plex Mono",monospace;font-size:.62rem;color:var(--dim);
+ text-align:center;padding-top:.35rem;letter-spacing:.03em}
+.ft b{color:var(--bright);font-weight:500}
+.arrows{display:flex;justify-content:space-between;align-items:center;
+ font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--dim);
+ margin-top:.9rem;padding-top:.8rem;border-top:1px solid var(--rule);gap:1rem;flex-wrap:wrap}
+.arrows span b{color:var(--signal);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(325px,1fr));gap:1.5rem}
+.card{background:var(--panel);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.card h2{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:1rem;
+ letter-spacing:-.01em;padding:.85rem 1rem .1rem}
+.card p{color:var(--dim);font-size:.82rem;padding:0 1rem .8rem;min-height:3.4rem}
+/* the team grid: 6 candidates x 8 fields, drawn on paper */
+.sheet{background:var(--paper);padding:.85rem .9rem}
+table{border-collapse:collapse;width:100%;font-family:"IBM Plex Mono",monospace;font-size:.58rem}
+th{color:#6C645A;font-weight:500;text-align:center;padding:0 0 .3rem;
+ writing-mode:vertical-rl;transform:rotate(180deg);height:3.6rem;letter-spacing:.04em}
+th.rowh{writing-mode:horizontal-tb;transform:none;height:auto;text-align:right;
+ padding-right:.45rem;width:2.6rem}
+td{width:11%;height:1.35rem;border:1px solid var(--paper-rule);background:#F7F5F0}
+td.m{background:var(--signal);border-color:#3FA37C}
+td.pin{background:#CFC8BA;position:relative}
+td.pin::after{content:"";position:absolute;inset:22%;border:1px solid #8A8074;border-radius:1px}
+.foot{display:flex;gap:.75rem;align-items:baseline;padding:.7rem 1rem .95rem;
+ border-top:1px solid var(--rule);font-family:"IBM Plex Mono",monospace;font-size:.72rem}
+.foot .n{font-size:1.15rem;font-weight:600;color:var(--signal);letter-spacing:-.02em}
+.foot .n.bad{color:var(--warn)}
+.foot .lbl{color:var(--dim);font-size:.68rem;line-height:1.3}
+.key{display:flex;flex-wrap:wrap;gap:1.4rem;margin:2.4rem 0 .5rem;padding-top:1.3rem;
+ border-top:1px solid var(--rule);font-family:"IBM Plex Mono",monospace;font-size:.74rem;color:var(--dim)}
+.key i{display:inline-block;width:.85rem;height:.85rem;border:1px solid var(--paper-rule);
+ vertical-align:-.1rem;margin-right:.4rem}
+.key i.m{background:var(--signal)} .key i.k{background:#F7F5F0} .key i.p{background:#CFC8BA}
+.note{color:var(--dim);font-size:.8rem;margin-top:1rem;max-width:70ch}
+</style>
+</head>
+<body>
+<h1>Mask shapes<span>.</span></h1>
+<p class="lede">A team is a grid: <b>six candidates down, eight fields across</b>. To make a new
+team you hide some cells and ask the model to fill them back in. <b>Which cells you hide is the
+mask shape</b>, and it decided almost everything — the same weights go from unusable to
+near-perfect depending on the pattern alone.</p>
+
+<section class="strip">
+  <h2>The forward process — masking accumulates</h2>
+  <p class="sub">Time runs 0 to 1. At time <i>t</i> each cell is masked with probability <i>t</i>,
+  and masking is <b>absorbing</b>: once a cell is hidden it stays hidden. So the sheet fills up
+  until nothing is left. Sampling runs this backwards — start all green, unmask a fraction each
+  step until the sheet is complete.</p>
+  <div class="film" id="film"></div>
+  <div class="arrows">
+    <span>forward → <b>mask more</b> (this is the corruption, not something the model does)</span>
+    <span><b>← reverse</b> unmask a fraction each step (this is generation)</span>
+  </div>
+  <p class="sub" style="margin:1rem 0 0">
+  <b>Training never walks this strip.</b> Each step draws one random <i>t</i> and jumps straight to
+  that frame — outlined above — because “each cell masked with probability <i>t</i>” has a closed
+  form and can be sampled in one shot. Walking the intermediate steps would cost far more and
+  produce the same distribution. Over many steps the model sees every frame, just never in order.</p>
+</section>
+
+<div class="grid" id="grid"></div>
+
+<div class="key">
+  <span><i class="m"></i>hidden — the model fills this in</span>
+  <span><i class="k"></i>kept — carried over unchanged</span>
+  <span><i class="p"></i>pinned — held fixed on purpose</span>
+</div>
+<p class="note">Legality is measured against Showdown’s own validator rules. Figures come from the
+k-sweep (<code>ablation.json</code>) and the three-seed pilot; the “species only” row compares the
+model with uniform random on the same mask. Stat Points are a ninth field added later in
+<code>fullteam.py</code> and are not drawn here — the pilot masked these eight.</p>
+
+<script>
+const F=["species","ability","item","move 1","move 2","move 3","move 4","nature"];
+const S=[0,1,2,3,4,5];
+// each shape returns a set of "slot,field" keys
+const SHAPES=[
+ {t:"Training", d:"One training step: draw t∼U(0,1), hide each cell with probability t, predict what was hidden. This is a single frame plucked from the strip above — training never walks the trajectory in order.",
+  m:()=>{const s=new Set();S.forEach(r=>F.forEach((_,c)=>{if(Math.random()<0.45)s.add(r+","+c)}));return s},
+  n:"—", l:"one draw shown; the rate changes every step"},
+ {t:"Scatter, 1 field", d:"Hide a single cell anywhere. The smallest possible edit, and where the model is strongest.",
+  m:()=>new Set(["2,4"]), n:"0.604", l:"legal · vs 0.396 for random"},
+ {t:"Scatter, 3 fields", d:"Three cells anywhere on the sheet. Spread across candidates, so no single set is fully rewritten.",
+  m:()=>new Set(["0,6","3,1","4,3"]), n:"0.297", l:"legal · vs 0.047 for random"},
+ {t:"Within one candidate", d:"Three cells inside one set, never touching the species. The candidate stays; its kit changes.",
+  m:()=>new Set(["3,2","3,4","3,7"]), n:"0.281", l:"legal · vs 0.047 for random"},
+ {t:"Species only", d:"Hide just the species and keep its four moves. The model must name a candidate that can legally learn them — the hardest constraint in the game, and its best result.",
+  m:()=>new Set(["1,0"]), n:"0.536", l:"legal · vs 0.016 for random — 34×"},
+ {t:"A whole candidate", d:"All eight fields of one slot. This is the move a real search makes — swap a team member — and it is where the model collapses.",
+  m:()=>new Set(F.map((_,c)=>"4,"+c)), n:"0.027", l:"legal · copy-paste gets 0.877", bad:1},
+ {t:"Everything", d:"All 48 cells hidden — invent a team from nothing. Unconstrained decoding produced zero legal teams in 256 tries.",
+  m:()=>{const s=new Set();S.forEach(r=>F.forEach((_,c)=>s.add(r+","+c)));return s},
+  n:"0.000", l:"legal unconstrained · 1.000 constrained", bad:1},
+ {t:"Everything, one pinned", d:"What the team builder does: hold your pick fixed and hide the rest. Unmasked cells are carried over for free, so pinning costs nothing.",
+  m:()=>{const s=new Set();S.forEach(r=>F.forEach((_,c)=>{if(r!==0)s.add(r+","+c)}));return s},
+  pin:new Set(F.map((_,c)=>"0,"+c)), n:"0.896", l:"Showdown-valid, constrained"}
+];
+// forward trajectory: absorbing, so the masked set only grows
+(function(){
+  const T=[0,.2,.4,.6,.8,1], N=48, order=[...Array(N).keys()];
+  for(let i=N-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
+  const pick=2;  // the frame training happens to land on this time
+  document.getElementById("film").innerHTML=T.map((t,fi)=>{
+    const k=Math.round(t*N), hid=new Set(order.slice(0,k));
+    let cells="";
+    for(let r=0;r<6;r++){cells+="<tr>";
+      for(let c=0;c<8;c++) cells+=`<td class="${hid.has(r*8+c)?"m":""}"></td>`;
+      cells+="</tr>";}
+    return `<div><div class="frame${fi===pick?" pick":""}"><table>${cells}</table></div>
+      <div class="ft"><b>t = ${t.toFixed(1)}</b><br>${k} of 48 hidden${fi===pick?"<br>← one training draw":""}</div></div>`;
+  }).join("");
+})();
+document.getElementById("grid").innerHTML=SHAPES.map(sh=>{
+  const m=sh.m(), pin=sh.pin||new Set();
+  const head="<tr><th class='rowh'></th>"+F.map(f=>`<th>${f}</th>`).join("")+"</tr>";
+  const rows=S.map(r=>"<tr><th class='rowh'>#"+(r+1)+"</th>"+F.map((_,c)=>{
+    const k=r+","+c;
+    return `<td class="${pin.has(k)?"pin":m.has(k)?"m":""}"></td>`;}).join("")+"</tr>").join("");
+  return `<article class="card">
+    <h2>${sh.t}</h2><p>${sh.d}</p>
+    <div class="sheet"><table>${head}${rows}</table></div>
+    <div class="foot"><span class="n${sh.bad?" bad":""}">${sh.n}</span><span class="lbl">${sh.l}</span></div>
+  </article>`;}).join("");
+</script>
+</body>
+</html>

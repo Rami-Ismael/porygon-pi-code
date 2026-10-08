@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team sheet generator — Reg M-B</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0E1319; --panel:#151C24; --raised:#1C242E; --rule:#28323E;
+  --paper:#EDE9E1; --paper-rule:#D3CCC0; --paper-ink:#1A1714;
+  --signal:#5BD6A4; --signal-dim:#2B6B54; --warn:#E0705A; --dim:#7D8998; --bright:#DDE4EC;
+  --sheet-w:clamp(320px,42vw,560px);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--ink);color:var(--bright);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:15px;line-height:1.5;
+  min-height:100vh}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+
+/* ── instrument header ─────────────────────────────────────── */
+header{display:flex;flex-wrap:wrap;gap:1rem 2rem;align-items:baseline;
+  padding:1.1rem clamp(1rem,3vw,2.5rem);border-bottom:1px solid var(--rule);
+  position:sticky;top:0;background:rgba(14,19,25,.94);backdrop-filter:blur(8px);z-index:20}
+h1{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:1.15rem;
+  letter-spacing:-.02em;line-height:1}
+h1 span{color:var(--signal)}
+.readout{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--dim);
+  letter-spacing:.04em;text-transform:uppercase;margin-left:auto;text-align:right}
+
+/* ── layout ────────────────────────────────────────────────── */
+main{display:grid;grid-template-columns:minmax(260px,320px) 1fr;
+  gap:clamp(1rem,2.5vw,2.5rem);padding:clamp(1rem,3vw,2.5rem);align-items:start}
+@media(max-width:860px){main{grid-template-columns:1fr}}
+
+/* ── controls ──────────────────────────────────────────────── */
+.controls{position:sticky;top:5rem;display:flex;flex-direction:column;gap:1.4rem}
+@media(max-width:860px){.controls{position:static}}
+fieldset{border:0}
+legend,.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:.68rem;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--dim);
+  margin-bottom:.55rem;display:block}
+select,input[type=search]{width:100%;background:var(--panel);color:var(--bright);
+  border:1px solid var(--rule);border-radius:3px;padding:.6rem .7rem;
+  font-family:"IBM Plex Mono",monospace;font-size:.92rem}
+select:focus-visible,input:focus-visible,button:focus-visible,.opt:focus-within{
+  outline:2px solid var(--signal);outline-offset:2px}
+.opts{display:flex;flex-direction:column;gap:.4rem}
+.opt{display:flex;gap:.65rem;align-items:flex-start;padding:.6rem .7rem;
+  background:var(--panel);border:1px solid var(--rule);border-radius:3px;cursor:pointer;
+  transition:border-color .15s,background .15s}
+.opt:hover{border-color:var(--signal-dim)}
+.opt input{margin-top:.25rem;accent-color:var(--signal);flex:none}
+.opt:has(input:checked){border-color:var(--signal);background:var(--raised)}
+.opt b{font-weight:600;font-size:.9rem;display:block}
+.opt small{color:var(--dim);font-size:.76rem;line-height:1.35;display:block}
+.opt code{font-family:"IBM Plex Mono",monospace;color:var(--signal);font-size:.74rem}
+button.go{width:100%;background:var(--signal);color:#08140F;border:0;border-radius:3px;
+  padding:.8rem;font-family:"Bricolage Grotesque",sans-serif;font-weight:700;
+  font-size:.95rem;letter-spacing:-.01em;cursor:pointer;transition:filter .15s}
+button.go:hover:not(:disabled){filter:brightness(1.12)}
+button.go:disabled{opacity:.45;cursor:progress}
+
+/* ── the signature: one shared measurement axis ────────────── */
+.axis{position:sticky;top:5rem;background:var(--panel);border:1px solid var(--rule);
+  border-radius:3px;padding:.9rem 1rem 1.5rem;margin-bottom:1.4rem;z-index:10}
+.axis-track{position:relative;height:3px;background:var(--rule);border-radius:2px;
+  margin:3.6rem 0 1.3rem}
+.tick{position:absolute;transform:translateX(-50%);white-space:nowrap;
+  font-family:"IBM Plex Mono",monospace;font-size:.62rem;letter-spacing:.03em}
+.scale{top:.65rem;color:var(--dim)}
+.scale::before{content:"";position:absolute;left:50%;top:-.5rem;width:1px;height:6px;
+  background:var(--rule)}
+.base{color:var(--bright);text-align:center}
+.base::after{content:"";position:absolute;left:50%;width:1px;background:var(--signal-dim)}
+.base.r0{top:-1.35rem}      .base.r0::after{top:1.25rem;height:.7rem}
+.base.r1{top:-2.7rem}       .base.r1::after{top:1.25rem;height:2.05rem}
+.base b{display:block;color:var(--signal);font-weight:600;font-size:.68rem}
+
+/* ── team sheets: paper on the instrument ──────────────────── */
+.sheets{display:flex;flex-direction:column;gap:1.1rem}
+.sheet{background:var(--paper);color:var(--paper-ink);border-radius:2px;
+  display:grid;grid-template-columns:1fr auto;overflow:hidden;
+  box-shadow:0 1px 0 rgba(255,255,255,.06),0 14px 28px -18px rgba(0,0,0,.9)}
+@media(max-width:700px){.sheet{grid-template-columns:1fr}}
+.sheet-body{padding:1rem 1.15rem}
+.sheet-head{display:flex;align-items:baseline;gap:.6rem;
+  border-bottom:1px solid var(--paper-rule);padding-bottom:.5rem;margin-bottom:.7rem}
+.sheet-no{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:1rem;
+  letter-spacing:-.02em}
+.sheet-meta{font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:#6C645A;
+  letter-spacing:.05em;text-transform:uppercase;margin-left:auto}
+.mon{font-family:"IBM Plex Mono",monospace;font-size:.78rem;line-height:1.45;
+  padding:.35rem 0;border-bottom:1px dotted var(--paper-rule)}
+.mon:last-child{border-bottom:0}
+.mon .nm{font-weight:600}
+.mon.pin{background:linear-gradient(90deg,rgba(91,214,164,.24),transparent 70%);
+  margin:0 -1.15rem;padding-left:1.15rem;padding-right:1.15rem}
+.mon .sub{color:#6C645A}
+.mon .mv{color:#3B3630}
+
+/* ── per-sheet measurement rail ────────────────────────────── */
+.rail{background:var(--raised);border-left:1px solid var(--rule);padding:1rem;
+  min-width:170px;display:flex;flex-direction:column;gap:.6rem;justify-content:center}
+@media(max-width:700px){.rail{border-left:0;border-top:1px solid var(--rule)}}
+.rail .eyebrow{margin:0}
+.wr{font-family:"IBM Plex Mono",monospace;font-size:1.55rem;font-weight:600;
+  letter-spacing:-.02em;line-height:1}
+.wr.up{color:var(--signal)} .wr.down{color:var(--warn)} .wr.none{color:var(--dim)}
+.ci{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--dim)}
+.bar{position:relative;height:3px;background:var(--rule);border-radius:2px}
+.bar i{position:absolute;height:100%;background:var(--signal);border-radius:2px}
+.bar u{position:absolute;top:-3px;width:1px;height:9px;background:var(--bright);
+  opacity:.55;text-decoration:none}
+button.measure{background:transparent;color:var(--signal);border:1px solid var(--signal-dim);
+  border-radius:3px;padding:.45rem .6rem;font-family:"IBM Plex Mono",monospace;
+  font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;cursor:pointer}
+button.measure:hover:not(:disabled){background:var(--signal-dim);color:var(--bright)}
+button.measure:disabled{opacity:.5;cursor:progress}
+.copy{background:none;border:0;color:#6C645A;font-family:"IBM Plex Mono",monospace;
+  font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;padding:0}
+.copy:hover{color:var(--paper-ink)}
+
+/* ── states ────────────────────────────────────────────────── */
+.state{border:1px dashed var(--rule);border-radius:3px;padding:2.2rem 1.5rem;
+  text-align:center;color:var(--dim)}
+.state b{display:block;color:var(--bright);font-family:"Bricolage Grotesque",sans-serif;
+  font-weight:700;font-size:1.05rem;margin-bottom:.4rem}
+.state.err{border-color:var(--warn);border-style:solid;color:var(--warn)}
+@media(prefers-reduced-motion:no-preference){
+  .sheet{animation:rise .32s cubic-bezier(.2,.7,.3,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(9px)}}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Team sheet generator<span>.</span></h1>
+  <div class="readout" id="readout">loading…</div>
+</header>
+
+<main>
+  <form class="controls" id="form">
+    <fieldset>
+      <legend>Pin a candidate</legend>
+      <input type="search" id="pin" list="dex" placeholder="type a candidate…"
+             autocomplete="off" aria-label="Pin a candidate" value="Garchomp">
+      <datalist id="dex"></datalist>
+      <small id="pinnote" style="color:var(--dim);font-size:.74rem;display:block;margin-top:.4rem"></small>
+    </fieldset>
+
+    <fieldset>
+      <legend>Build method</legend>
+      <div class="opts">
+        <label class="opt"><input type="radio" name="method" value="graft" checked>
+          <span><b>Graft onto a real team</b>
+          <small>Takes a tournament team and swaps your pick in. Measured baseline <code>0.420</code></small></span></label>
+        <label class="opt"><input type="radio" name="method" value="invent">
+          <span><b>Invent all six</b>
+          <small>The diffusion model writes the whole sheet. Measured baseline <code>0.093</code></small></span></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Playstyle</legend>
+      <select id="style"></select>
+      <small style="color:var(--dim);font-size:.74rem;display:block;margin-top:.4rem">
+        Steering works, and costs about 3.5 points of win rate.</small>
+    </fieldset>
+
+    <button class="go" id="go" type="submit">Build teams</button>
+  </form>
+
+  <section>
+    <div class="axis" aria-hidden="true">
+      <span class="eyebrow">Win rate against the top 50 · measured, not predicted</span>
+      <div class="axis-track" id="track"></div>
+    </div>
+    <div class="sheets" id="sheets">
+      <div class="state"><b>Nothing built yet</b>Pick a candidate and build. Every sheet can be battled against the top 50 before you trust it.</div>
+    </div>
+  </section>
+</main>
+
+<script>
+const AXMAX=0.60;
+let META=null;
+const $=s=>document.querySelector(s);
+const pos=v=>Math.max(0,Math.min(100,v/AXMAX*100));
+
+fetch("/api/meta").then(r=>r.json()).then(m=>{
+  META=m;
+  $("#readout").textContent=`Reg M-B · ${m.corpus} teams · ${m.opponents} opponents · behaviour-cloning pilot`;
+  $("#dex").innerHTML=m.species.map(s=>`<option value="${s.name}">in ${s.count} teams</option>`).join("");
+  note();
+  $("#style").innerHTML=m.styles.map(s=>`<option value="${s}">${s==="none"?"any style":s}</option>`).join("");
+  $("#track").innerHTML=[0,.15,.30,.45,.60].map(v=>
+    `<span class="tick scale" style="left:${pos(v)}%">${v.toFixed(2)}</span>`).join("")
+   +m.baselines.map((b,i)=>
+    `<span class="tick base r${i%2}" style="left:${pos(b.value)}%"><b>${b.value.toFixed(3)}</b>${b.label}</span>`).join("");
+});
+
+const keyOf=name=>{
+  const n=(name||"").toLowerCase().replace(/[^a-z0-9]/g,"");
+  return (META.species.find(s=>s.key===n)||{}).key;
+};
+function note(){
+  const k=keyOf($("#pin").value);
+  const s=META.species.find(x=>x.key===k);
+  $("#pinnote").textContent = s ? `in ${s.count} of ${META.corpus} teams`
+                                : "not in the Reg M-B corpus";
+  $("#pinnote").style.color = s ? "var(--dim)" : "var(--warn)";
+}
+$("#pin").addEventListener("input",note);
+
+$("#form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const go=$("#go"); go.disabled=true; go.textContent="Building…";
+  $("#sheets").innerHTML=`<div class="state"><b>Building</b>Sampling teams and checking each against Showdown’s validator.</div>`;
+  try{
+    const r=await fetch("/api/build",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({pin:keyOf($("#pin").value)||"",style:$("#style").value,
+        method:new FormData($("#form")).get("method"),n:4})}).then(r=>r.json());
+    if(r.error) return fail(r.error);
+    if(!r.teams.length) return fail("No valid team came back. Try another candidate or method.");
+    render(r.teams);
+  }catch(err){ fail(String(err)); }
+  finally{ go.disabled=false; go.textContent="Build teams"; }
+});
+
+const fail=m=>$("#sheets").innerHTML=`<div class="state err"><b>Build failed</b>${m}</div>`;
+
+function render(teams){
+  $("#sheets").innerHTML=teams.map((t,i)=>`
+   <article class="sheet">
+    <div class="sheet-body">
+      <div class="sheet-head">
+        <span class="sheet-no">Sheet ${String(i+1).padStart(2,"0")}</span>
+        <button class="copy" data-copy="${i}">copy paste</button>
+        <span class="sheet-meta">${$("#style").value==="none"?"":$("#style").value+" · "}Showdown-valid</span>
+      </div>
+      ${t.slots.map(s=>`<div class="mon${s.pinned?" pin":""}">
+        <span class="nm">${s.species}</span> <span class="sub">@ ${s.item||"—"} · ${s.ability} · ${s.nature||"Serious"}</span><br>
+        <span class="mv">${s.moves.join(" · ")}</span> <span class="sub">${s.evs}</span>
+      </div>`).join("")}
+    </div>
+    <div class="rail">
+      <span class="eyebrow">Win rate</span>
+      <span class="wr none" id="wr${i}">not measured</span>
+      <span class="ci" id="ci${i}">96 battles when you ask</span>
+      <div class="bar"><i id="bar${i}" style="width:0"></i>${
+        META.baselines.map(b=>`<u style="left:${pos(b.value)}%"></u>`).join("")}</div>
+      <button class="measure" data-m="${i}">Measure</button>
+    </div>
+   </article>`).join("");
+  window.__teams=teams;
+  document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{
+    navigator.clipboard.writeText(teams[b.dataset.copy].paste);
+    b.textContent="copied"; setTimeout(()=>b.textContent="copy paste",1400);
+  });
+  document.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>doMeasure(b,+b.dataset.m));
+}
+
+async function doMeasure(btn,i){
+  btn.disabled=true; btn.textContent="Battling…";
+  $("#ci"+i).textContent="running 96 battles…";
+  try{
+    const r=await fetch("/api/measure",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({paste:window.__teams[i].paste,opponents:12,battles:8})}).then(r=>r.json());
+    if(r.error){ $("#ci"+i).textContent=r.error; btn.textContent="Retry"; btn.disabled=false; return; }
+    const el=$("#wr"+i), graft=META.baselines.find(b=>b.key==="graft").value;
+    el.textContent=r.win_rate.toFixed(3);
+    el.className="wr "+(r.win_rate>=graft?"up":"down");
+    $("#ci"+i).textContent=`± ${(r.se*1.96).toFixed(3)} · ${r.battles} battles`;
+    $("#bar"+i).style.width=pos(r.win_rate)+"%";
+    btn.textContent="Measured"; 
+  }catch(e){ $("#ci"+i).textContent=String(e); btn.textContent="Retry"; btn.disabled=false; }
+}
+</script>
+</body>
+</html>
