@@ -70,3 +70,42 @@ interval 0.414, cads 0.393. Arm − control: interval −0.013 [−0.040, +0.015
 **Both arms fail** rule (b): every seed widens line-ups, but neither win-rate lower bound clears −0.03.
 Interval is the near miss (point −0.013); CADS pays for its 2.6× line-ups with a real win-rate loss.
 Count ≥ 0.531 among the 64: control 21 / 21 / 11, interval 15 / 9 / 14, cads 10 / 6 / 12.
+
+# Species guidance 1.5: the middle point of the interval arm (pre-registration, 2026-10-15)
+
+**Question.** `interval` (species guidance 1, the rest 2) was the near miss above: line-ups 1.9× control in
+every seed, win rate −0.013 [−0.040, +0.015], lower bound 0.010 short of the −0.03 bound. CADS, which
+widened further, lost more. If the win-rate cost grows with how far the species weight drops below 2,
+the untested middle point — species guidance 1.5, the other 42 fields at 2 — should widen line-ups by
+less than `interval` did and cost less. Does it clear the rule? This is the one cheap arm left on the
+guidance-timing lever; it is a **new arm**, not a rerun of `interval` or `cads`, both of which stay
+retired.
+
+**Arm `species15`.** Classifier-free guidance weight 1.5 on the six species columns (the first six steps
+of `diffusion.ORDER`), 2 on the remaining 42 fields; ridge tilt, temperature, ask, repair and validator as
+in the control. `foundation.Gen.sample(g_species=1.5)`, i.e. the same code path as `interval` with one
+number changed.
+
+**Fresh control.** The control is drawn again, not reused: seed base 7100 instead of 7000 (seeds 1–3 →
+torch/numpy seeds 7101–7103), so both arms are new draws and the control's own line-up count and win
+rate get a second, independent reading. As before, the arm and the control start each seed from the
+same state. Results go to `results/guidance_timing_cads_species15.json`, matchup-matrix origin
+`gtc15:<arm>_s<seed>`; `results/guidance_timing_cads.json` is not modified. Run with
+`GTC_TAG=species15` (`src/guidance_timing_cads.py`).
+
+**Everything else is unchanged** from the shared design above: generation-0 v3 members without held-out
+leakage, ask 0.5, temperature 1, ridge guidance at the ridge's λ, the first 512 validator-accepted
+proposals per (arm, seed), the 64 highest by ridge score battled once per top-50 column (49 battles,
+behaviour-cloning policy both sides, policy 1), seeds 1–3, the same diversity and win-rate metrics,
+bootstrap 95% intervals with 4,000 draws, teams resampled within seed.
+
+**Decision rule (fixed before battles).** `species15` passes if
+(a) its distinct species line-ups /512 exceed the fresh `control`'s in all 3 seeds, AND
+(b) the bootstrap 95% lower bound of (`species15` − `control`) battled win rate is above −0.03.
+A pass earns the arm a place inside the cross-entropy loop; a fail retires the guidance-timing lever on
+the generation-0 proposer at every species weight tried (1, 1.5). Not rerun either way.
+
+**Prediction, written before the run.** Line-ups between control's ~150 and `interval`'s ~275 per 512;
+win-rate difference between −0.013 and 0. Whether the lower bound clears −0.03 is the open question —
+at 3 seeds × 64 teams the interval half-width was about 0.027, so a point estimate above −0.003 is
+needed.

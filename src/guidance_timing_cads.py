@@ -11,6 +11,9 @@ Win rate = wins / battles against the top-50 meta teams.
     python guidance_timing_cads.py gen
     python battle_supervisor.py guidance_timing_cads.py battle --then report
     GTC_SMOKE=1 python guidance_timing_cads.py gen       # tiny plumbing check, own file
+    GTC_TAG=species15 python guidance_timing_cads.py gen # follow-up arm (2026-10-15, second section of the doc):
+                                                         # species guidance 1.5, fresh control, seed base 7100,
+                                                         # results/guidance_timing_cads_species15.json, origin gtc15
 (run with /tmp/vgc-pilot/.venv/bin/python)
 """
 import json, math, os, sys, time
@@ -39,7 +42,13 @@ SMOKE = bool(os.environ.get("GTC_SMOKE"))
 OUT = L.RES / ("guidance_timing_cads_smoke.json" if SMOKE else "guidance_timing_cads.json")
 ORIGIN = "gtcsmoke" if SMOKE else "gtc"
 if SMOKE: PROPOSE, BATTLE, SEEDS, BATCH = 24, 4, [1], 24
-ARM_KW = {"control": {}, "interval": dict(g_species=1.0), "cads": dict(cads=S_CADS)}
+ARM_KW = {"control": {}, "interval": dict(g_species=1.0), "cads": dict(cads=S_CADS), "species15": dict(g_species=1.5)}
+TAG = os.environ.get("GTC_TAG", "")
+if TAG == "species15":          # the follow-up arm gets its own file, origin and seed base; the first run's file is never touched
+    ARMS, SEED0 = ["control", "species15"], 7100
+    OUT = L.RES / ("guidance_timing_cads_species15_smoke.json" if SMOKE else "guidance_timing_cads_species15.json")
+    ORIGIN = "gtc15smoke" if SMOKE else "gtc15"
+elif TAG: raise SystemExit(f"unknown GTC_TAG {TAG!r}")
 
 
 def save(out): json.dump(out, open(OUT, "w"))
