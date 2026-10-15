@@ -50,6 +50,7 @@ OUT = RES / "lossdown.json"
 CK = Path.home() / ".local/share/vgc-pilot-runtime/lossdown"     # checkpoints outside iCloud
 KEYS = ["species", "ability", "item", "move", "nature"]
 NAN = float("nan")
+COND_NOISE = None      # CADS: (s, gamma) for the current decode step, set by the sampler; None = clean condition
 
 
 # ---------------------------------------------------------------- legality tables (structured output)
@@ -193,6 +194,7 @@ class Net(nn.Module):
     def wvec(self, w):
         null = torch.isnan(w); z = torch.nan_to_num(w, 0.0).view(-1, 1)
         v = self.wproj(torch.cat([z, torch.sin(z * self.freqs), torch.cos(z * self.freqs)], 1))
+        if COND_NOISE is not None: v = cads_noise(v, *COND_NOISE)      # docs/guidance-timing-cads.md
         return torch.where(null.view(-1, 1), self.wnull.expand_as(v), v)
 
     def mvec(self, r):
@@ -219,6 +221,14 @@ class Net(nn.Module):
 
     def logits(self, h):
         return {k: self.head[k](h[:, cols]) for k, cols in COLS_BY_KEY.items()}
+
+
+def cads_noise(v, s, gamma):
+    """CADS (Sadat et al., ICLR 2024) on a condition embedding v [B, d]: sqrt(gamma) v + s sigma_v sqrt(1 - gamma) eps,
+    rescaled to v's own per-row mean and standard deviation (psi = 1). s is relative to sigma_v."""
+    mu, sd = v.mean(1, keepdim=True), v.std(1, keepdim=True)
+    y = math.sqrt(gamma) * v + s * sd * math.sqrt(1.0 - gamma) * torch.randn_like(v)
+    return (y - y.mean(1, keepdim=True)) / y.std(1, keepdim=True).clamp_min(1e-8) * sd + mu
 
 
 def logprobs_fn(net, tables=None, rules=("clause", "compat", "order"), tag_id=None):
