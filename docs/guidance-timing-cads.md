@@ -62,3 +62,11 @@ An arm **widens line-ups without losing win rate** if
 (b) the bootstrap 95% lower bound of its battled win rate minus `control`'s is above −0.03.
 Vendi score and largest share are reported, not part of the rule. A pass earns the arm a place inside
 the cross-entropy loop (the next experiment); a fail retires it. Do not rerun an arm that passes or fails.
+
+## Result (2026-10-15, `results/guidance_timing_cads.json`)
+Line-ups /512 by seed: control 149 / 135 / 160; interval 282 / 247 / 292; cads 380 / 399 / 386. Vendi: 4.1,
+10.3, 28.5 (mean of seeds). Battled win rate (64 teams × 49 battles, mean of seeds): control 0.427,
+interval 0.414, cads 0.393. Arm − control: interval −0.013 [−0.040, +0.015]; cads −0.034 [−0.059, −0.008].
+**Both arms fail** rule (b): every seed widens line-ups, but neither win-rate lower bound clears −0.03.
+Interval is the near miss (point −0.013); CADS pays for its 2.6× line-ups with a real win-rate loss.
+Count ≥ 0.531 among the 64: control 21 / 21 / 11, interval 15 / 9 / 14, cads 10 / 6 / 12.
