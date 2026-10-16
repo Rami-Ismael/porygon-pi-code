@@ -107,6 +107,50 @@ pool for the finals.
 
 (none yet)
 
-## Result
+## Result (2026-10-16, six runs 10:47–12:11, `results/sp15loop_<arm>_s<seed>.json`, summary `results/cem_v3_species15_loop.json`)
 
-(appended after the run)
+**`species15` FAILS the pre-registered rule: clause (a) fails in seed 4041, clause (b) holds.**
+
+Distinct species line-ups per 512 proposals, by generation (plain → species15):
+
+| seed | g0 | g1 | g2 | g3 | g4 | mean g ≥ 1 | stop |
+|---|---|---|---|---|---|---|---|
+| 4041 | 155 → 205 | 153 → 128 | 66 → 69 | | | 109.5 → 98.5 (**−11**) | both g2 |
+| 4042 | 156 → 205 | 84 → 185 | 45 → 108 | – → 57 | | 64.5 → 116.7 (+52) | plain g2, arm g3 |
+| 4043 | 132 → 189 | 187 → 145 | 71 → 71 | 69 → – | 40 → – | 91.8 → 108.0 (+16) | plain g4, arm g2 |
+
+Generation 0 repeats the settled result (+50 / +49 / +57 line-ups, Vendi 4.0–4.4 → 5.8–6.1). After
+the first re-steer the lead is gone in two seeds of three: at g1 the arm proposes fewer line-ups than
+the plain loop in seeds 4041 and 4043, and by g2 both arms sit at 66–71 (seed 4041, 4043) with Vendi
+1.7–1.9. Elite line-ups are 29–41 in every run, arm or not. The one seed where the arm keeps a lead
+(4042) is the seed where the plain loop collapsed fastest (84 at g1). Every run stopped on the
+species-set guardrail; because the guardrail is relative to the run's own generation 0, the arm's
+threshold is ~100 instead of ~70, which ended `species15_s4041` at 69 sets where the plain loop with
+the same count would have continued.
+
+Finalists, 16 teams × 192 fresh battles vs the top-50 (behaviour-cloning policy both sides), then vs
+ranks 51–100:
+
+| run | fresh mean | best | ≥ 0.531 | line-ups /16 | vs 51–100 |
+|---|---|---|---|---|---|
+| plain 4041 / 4042 / 4043 | 0.550 / 0.577 / 0.551 | 0.615 / 0.688 / 0.677 | 11 / 14 / 12 | 5 / 2 / 4 | 0.561 / 0.568 / 0.544 |
+| species15 4041 / 4042 / 4043 | 0.552 / 0.579 / 0.554 | 0.625 / **0.734** / 0.630 | 10 / 11 / 12 | 4 / 3 / 2 | 0.523 / 0.561 / 0.531 |
+| reference, plain 4040 (2026-10-14) | 0.504 | 0.599 | 5 | 4 | 0.509 |
+
+species15 − plain, finalists' fresh win rate: **+0.002 [−0.019, +0.024]** (clause (b) holds: the
+lower bound clears −0.03). Vs ranks 51–100 the arm's finalists are 0.004–0.038 below the plain
+loop's in every seed (reported, not scored). The best single team of the experiment is
+`species15_s4042`'s 0.734 fresh; the plain loop's best is 0.688.
+
+Reading. The lever acts on the original members only: 1.5 on the species columns widens what the
+untuned model proposes, and the first fine-tune on the elites erases that width — the fine-tuned
+members propose from the elite core whatever the species weight, and the elites hold 29–41 line-ups
+in every run. The prediction (+20–40 line-ups at g ≥ 1 in every seed) was wrong in two seeds. Strength
+is unaffected either way. Per the rule, the guidance-timing lever is retired inside the loop; not rerun.
+
+Side reading, not part of the rule: three fresh plain-loop seeds give finalists at 0.550 / 0.577 /
+0.551 fresh against 0.504 for the settled seed-4040 run — the clean loop's run-to-run spread is
+about 0.03 and the 4040 reading is its low end. A new method compared against 0.504 alone would look
+better than it is; compare against these four readings.
+
+Battles: 22 search generations × 6,272 plus 6 × 6,144 finals ≈ 175,000, origins `sp15loop_*`.
