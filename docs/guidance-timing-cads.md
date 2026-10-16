@@ -109,3 +109,15 @@ the generation-0 proposer at every species weight tried (1, 1.5). Not rerun eith
 win-rate difference between −0.013 and 0. Whether the lower bound clears −0.03 is the open question —
 at 3 seeds × 64 teams the interval half-width was about 0.027, so a point estimate above −0.003 is
 needed.
+
+## Result (2026-10-15, `results/guidance_timing_cads_species15.json`)
+Line-ups /512 by seed: fresh control 151 / 159 / 143 (the first run's controls were 149 / 135 / 160);
+`species15` 205 / 211 / 191, +54 / +52 / +48. Vendi 4.3 → 6.2 (mean of seeds); largest line-up share
+44.9% → 35.7%. Battled win rate (64 teams × 49 battles vs the top-50 meta, behaviour-cloning policy both
+sides, mean of seeds): control 0.414, `species15` 0.415. Arm − control: **+0.001 [−0.026, +0.027]**.
+**`species15` PASSES** both clauses: more line-ups in every seed, lower bound −0.026 > −0.03. The
+prediction held (line-ups between control's ~150 and `interval`'s ~275; win-rate difference between
+−0.013 and 0). Count ≥ 0.531 among the 64: control 15 / 16 / 10, `species15` 12 / 15 / 15; best teams
+`species15_s1` 0.760, `control_s1` 0.740. The lever's dose-response on the generation-0 proposer: species
+weight 2 → 1.5 → 1 gives ~150 → ~200 → ~275 line-ups at win-rate cost 0 → ~0 → −0.013. Next, per the
+rule: species guidance 1.5 inside the cross-entropy loop. Not rerun.
