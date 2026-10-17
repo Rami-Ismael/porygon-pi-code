@@ -1,6 +1,6 @@
 # Flat-prior retrain: family-balanced sampling of the training rows (pre-registration, 2026-10-17)
 
-Written before any training step or battle (labels reworded to plain names on 2026-10-17 while the
+Written before any training step or battle (labels reworded to plain names (loop-teams model, battle-records model) on 2026-10-17 while the
 retrain ran; no setting or rule changed). The result is appended under "Result"; nothing above
 that heading is edited afterwards.
 
@@ -14,9 +14,9 @@ prior — widen the generation-0 line-ups without losing win rate?
 
 **Premise correction, found while writing this.** The 58%-temperature-family figure describes the
 whole 146,944-row `lossdata.npz`. The two clean mixture members do not train on all of it. The
-**family-trained member** (`F1_final_medium_noheldout`, `data=family`) trains on 17,129 rows — 622 real (`tag_of` = 0) and 16,507
-August–September loop rows (`oldpool` / `loops08`, `tag_of` = 1) — and the **matrix-conditioned
-member** (`G2_family_matrix_noprtrain_noheldout`, `data=family+matrix`) on those plus 5,414 cemrev / redund /
+**loop-teams model** (`F1_final_medium_noheldout`, `data=family`) trains on 17,129 rows — 622 real (`tag_of` = 0) and 16,507
+August–September loop rows (`oldpool` / `loops08`, `tag_of` = 1) — and the **battle-records
+model** (`G2_family_matrix_noprtrain_noheldout`, `data=family+matrix`) on those plus 5,414 cemrev / redund /
 matrix rows (tag 3) and 4,321 random-fill rows (tag 4): 26,864 rows. Neither sees a temperature row.
 The skew is the same inside what they see: the loop family has Garchomp on 10.6% of slots and the
 top six on 47.1% (exp(entropy) 36.4); the real rows 5.7% / 28.7% (63.1); cemrev / matrix 10.0% / 46.7%;
@@ -34,12 +34,12 @@ with the behaviour-cloning policy on both sides (policy 1). Monte Carlo evaluati
   also sit in the old pool or carry matrix entries), and equal mass per exact bitmask would show each of
   those rows hundreds of times per epoch.
 - Weight of a row = 1 / (number of training rows in its group), so every group has the same expected
-  share of each epoch's draws. Family-trained member: real 50%, loops 50% (a real row is drawn ~26× as
-  often as a loop row). Matrix-conditioned member: real, loops, cemrev / matrix, fill 25% each.
+  share of each epoch's draws. Loop-teams model: real 50%, loops 50% (a real row is drawn ~26× as
+  often as a loop row). Battle-records model: real, loops, cemrev / matrix, fill 25% each.
 - Draws per epoch = the number of training rows, with replacement (`torch.multinomial` on the
   weights), so the step count, schedule and every other setting are the control's:
-  `d=256 nlayer=6 nhead=8 sched=16,4,4,1.5,1 epochs=80 (family-trained) / 60 (matrix-conditioned) batch=256 lr=4e-4 ema=0.999
-  p_uncond=0.15 final=1 seed=0`, plus `mrow=1 data=family+matrix` for the matrix-conditioned member. Ranks 51–100 excluded as
+  `d=256 nlayer=6 nhead=8 sched=16,4,4,1.5,1 epochs=80 (loop-teams) / 60 (battle-records) batch=256 lr=4e-4 ema=0.999
+  p_uncond=0.15 final=1 seed=0`, plus `mrow=1 data=family+matrix` for the battle-records model. Ranks 51–100 excluded as
   before. New config key `fambal=1` in `lossdown.train_run`; the control is `fambal=0` (the existing
   code path, `torch.randperm`).
 - Checkpoints: the control names with `_fambal` appended (`F1_final_medium_noheldout_fambal.pt`,
@@ -93,7 +93,7 @@ line-up gain is spurious and the ELBO will say so.
 ## Result (2026-10-17, `results/flat_prior_run.json`; 12 cells × 64 teams × 49 battles, 35 confirm teams)
 
 Retrain: family-balanced draws cost the benchmark, as predicted — test-500 ELBO 1.783 → 1.816
-(family-trained member) and 1.787 → 1.828 (matrix-conditioned member); unconditional 1.797 → 1.897
+(loop-teams model) and 1.787 → 1.828 (battle-records model); unconditional 1.797 → 1.897
 and 1.800 → 1.879. No proposal copied a training row or a real team (0 of 768 in either arm).
 
 | cell (asked, seed) | line-ups /64 control → fambal | largest share | win rate control → fambal |
@@ -121,3 +121,18 @@ win rate −0.06 to −0.11). Species exp(entropy) over the 384 slots barely mov
 balanced members did not become flatter *after guidance*, only less concentrated on one line-up at
 the high ask. Training-set balancing at this weighting is retired; not rerun. The balanced
 checkpoints stay on disk under their `_fambal` names and are not used by any loop.
+
+**Addendum (2026-10-17, after the verdict; does not change it).** Where the narrowing happens: the
+first species the mixture writes, all fields masked (`/tmp/vgc-pilot/flat/first_slot_prior.json`).
+Effective species = exp(entropy).
+
+| setting | control: effective species, top-six share | balanced: effective species, top-six share |
+|---|---|---|
+| no guidance | 40.2, 43% | 56.6, 32% |
+| ask 0.5, guidance 2 | 14.3, 75% | 13.5, 78% |
+| ask 0.7, guidance 2 | 11.0, 73% | 15.7, 67% |
+
+Balancing flattened the prior as intended. Guidance at ask 0.5 pulled both back to the same six
+species (Garchomp, Charizard, Floette-Eternal, Kingambit, Basculegion, Whimsicott). The training-set
+skew is not what sets the generation-0 line-ups at ask 0.5; the guidance step is. Explainer:
+vault `Teaching/lessons/0012-balancing-the-training-teams.html`.
