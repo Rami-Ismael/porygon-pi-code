@@ -12,10 +12,10 @@ import torch
 from poke_env.ps_client import ServerConfiguration, AccountConfiguration
 from stable_baselines3 import PPO
 from vgc_bench.src.policy_player import BatchPolicyPlayer
-from vgc_bench.src.teams import RandomTeamBuilder
 from vgc_bench.src.utils import format_map
+from slot_order import ShuffledTeamBuilder
 
-class ScheduledTeamBuilder(RandomTeamBuilder):
+class ScheduledTeamBuilder(ShuffledTeamBuilder):
     """Opponent builder that cycles a FIXED ordered schedule instead of drawing
     uniformly — common random numbers across candidates (added 2026-09-02 for the
     TRS port; every candidate in a batch faces the identical opponent multiset,
@@ -41,12 +41,13 @@ async def score_one(pol, team, opps, n, conc, port, opp_schedule=None, seed=None
               max_concurrent_battles=conc, accept_open_team_sheet=True, open_timeout=None)
     tag = os.urandom(4).hex()
     a = BatchPolicyPlayer(policy=pol, account_configuration=AccountConfiguration(f"a{tag}", None),
-                          team=RandomTeamBuilder(1, None, "mb", custom_team_paths=[Path(team)]), **kw)
+                          team=ShuffledTeamBuilder(1, None, "mb", custom_team_paths=[Path(team)], order_seed=seed), **kw)
+    opp_seed = None if seed is None else seed + 1
     if opp_schedule:
         tb = ScheduledTeamBuilder(opp_schedule, 1, None, "mb",
-                                  custom_team_paths=[Path(o) for o in opps])
+                                  custom_team_paths=[Path(o) for o in opps], order_seed=opp_seed)
     else:
-        tb = RandomTeamBuilder(1, None, "mb", custom_team_paths=[Path(o) for o in opps])
+        tb = ShuffledTeamBuilder(1, None, "mb", custom_team_paths=[Path(o) for o in opps], order_seed=opp_seed)
     b = BatchPolicyPlayer(policy=pol, account_configuration=AccountConfiguration(f"b{tag}", None),
                           team=tb, **kw)
     await a.battle_against(b, n_battles=n)

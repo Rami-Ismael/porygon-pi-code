@@ -17,9 +17,9 @@ import torch
 from poke_env.ps_client import ServerConfiguration, AccountConfiguration
 from stable_baselines3 import PPO
 from vgc_bench.src.policy_player import BatchPolicyPlayer
-from vgc_bench.src.teams import RandomTeamBuilder
 from vgc_bench.src.utils import format_map
 from shard import ScheduledTeamBuilder
+from slot_order import ShuffledTeamBuilder
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
 from corpus import dex_entry
@@ -41,11 +41,13 @@ async def run_job(pol, job, conc, port, seed):
               max_concurrent_battles=conc, accept_open_team_sheet=True, open_timeout=None)
     tag = os.urandom(4).hex()
     a = BatchPolicyPlayer(policy=pol, account_configuration=AccountConfiguration(f"r{tag}", None),
-                          team=RandomTeamBuilder(1, None, "mb", custom_team_paths=[Path(job["row_file"])]), **kw)
+                          team=ShuffledTeamBuilder(1, None, "mb", custom_team_paths=[Path(job["row_file"])],
+                                                            order_seed=seed), **kw)
     cols = sorted(set(job["schedule"]))
     b = BatchPolicyPlayer(policy=pol, account_configuration=AccountConfiguration(f"c{tag}", None),
                           team=ScheduledTeamBuilder(job["schedule"], 1, None, "mb",
-                                                    custom_team_paths=[Path(c) for c in cols]), **kw)
+                                                    custom_team_paths=[Path(c) for c in cols],
+                                                    order_seed=None if seed is None else seed + 1), **kw)
     await a.battle_against(b, n_battles=len(job["schedule"]))
     by_col, unattributed, finished = defaultdict(lambda: [0, 0, 0]), 0, 0
     for x in a.battles.values():
