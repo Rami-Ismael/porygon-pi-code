@@ -329,7 +329,8 @@ def splits(d, nval=2000, seed=7):
 DEFAULT = dict(d=192, nlayer=4, nhead=6, dropout=0.1, time_cond=1, tags=0, legal=1, rules="clause,compat,order",
                strat=1, sched="1,1,1,1,1", objective="elbo", epochs=10, batch=256, lr=5e-4, wd=0.01,
                warmup=500, ema=0.999, p_uncond=0.15, data="all", warm="", seed=0, final=0, maxmin=0,
-               sources="model,real,fill,hps", upw=1, force=0, prime=1, mrow=0, moveorder="alpha")
+               sources="model,real,fill,hps", upw=1, force=0, prime=1, mrow=0, moveorder="alpha",
+               fambal=0)     # 1: draw rows with replacement, every tag_of family at equal expected share (docs/flat-prior-retrain.md)
 
 
 def sched_tensor(s):
@@ -425,7 +426,8 @@ def train_run(name, cfg):
     print(f"[{name}] {len(tr)} teams · {sum(p.numel() for p in net.parameters()):,} params · {total} steps · {DEV}", flush=True)
     t0 = time.perf_counter(); step = 0; log = []
     for ep in range(cfg["epochs"]):
-        net.train(); perm = torch.randperm(len(tr), device=DEV); run = 0.0
+        net.train(); run = 0.0
+        perm = torch.randperm(len(tr), device=DEV) if famw is None else torch.multinomial(famw, len(tr), replacement=True)
         for i in range(0, len(tr), cfg["batch"]):
             b = perm[i:i + cfg["batch"]]
             loss = batch_loss(net, tables, rules, xtr[b], wtr[b], ttr[b] if cfg["tags"] else None, sched, cfg, digits)
@@ -438,6 +440,10 @@ def train_run(name, cfg):
                     for pe, p in zip(ema.parameters(), net.parameters()): pe.lerp_(p, 1 - dec)
             run += float(loss.detach())
         net.eval()
+    famw = None
+    if cfg["fambal"]:                                                 # weight = 1 / rows in the row's family: equal mass per family
+        cnt = np.bincount(TAG[tr], minlength=NTAG); famw = torch.as_tensor(1.0 / cnt[TAG[tr]], dtype=torch.float32, device=DEV)
+        print("family balance: " + ", ".join(f"tag{t} {cnt[t]} rows" for t in range(NTAG) if cnt[t]), flush=True)
         m = ema if ema is not None else net
         vx, vw = d["X"][val], (cond_matrix(d, val) if cfg["mrow"] else d["W"][val])
         if digits is not None:
