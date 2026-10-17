@@ -74,3 +74,9 @@ Primary contrast Δ = C − A on verified win rate, pooled over the 3 seeds (24 
 Secondary, same CI rule, reported as stronger / weaker / no detectable difference: C − B (does the learned
 refill beat uniform refill on the identical mask) and B − A (does the mask-and-uniform-refill family differ
 from the hand-written operators).
+
+## Amendments from the smoke test, before the run (2026-10-17)
+1. The offense/bulk measure needs base stats; 24 v3 species are cosmetic formes (Alcremie and Vivillon
+   patterns) with none in the old dex. They take their base species' stats. Every other species is unchanged.
+2. `pool.REPO` is pinned to the unpacked vgc-bench runtime, as in `cem_v3.py`, because the staging copy has no
+   policy package. The opponents and the policy are unchanged.
