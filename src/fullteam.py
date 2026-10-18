@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np, torch
 import torch.nn as nn, torch.nn.functional as F
 from corpus import load_corpus, norm, STATS, dex_entry, MEGA_STONE_OF
-from encode import Vocab as BaseVocab, Legality, canon, NSLOT
+from encode import Vocab as BaseVocab, Legality, canon, NSLOT, strict_ids
 import diffusion as D
 
 NF2 = 9                       # 8 categorical + 1 spread
@@ -56,9 +56,8 @@ class FullVocab:
             ms = sorted(s["moves"], key=norm) + [""] * (4 - len(s["moves"]))
             vals = [norm(s["species"]), norm(s["ability"]), norm(s["item"]),
                     norm(ms[0]), norm(ms[1]), norm(ms[2]), norm(ms[3]), norm(s["nature"])]
-            row = [self.stoi[self.base.key(j)].get(v, 0) for j, v in enumerate(vals)]
-            row.append(self.stoi["spread"].get(spread_key(s["evs"]), 0))
-            out += row
+            pairs = [(self.base.key(j), v) for j, v in enumerate(vals)] + [("spread", spread_key(s["evs"]))]
+            out += strict_ids(self.stoi, pairs, self.base.source)
         return np.array(out, dtype=np.int64)
     def decode_field(self, col, idx):
         return self.itos[self.key(col)][idx]

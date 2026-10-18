@@ -30,6 +30,14 @@ def team_fields(team):
                 norm(ms[0]), norm(ms[1]), norm(ms[2]), norm(ms[3]), norm(s["nature"])]
     return out
 
+def strict_ids(stoi, pairs, source):
+    """Token ids for (vocabulary key, value) pairs. Every encoder goes through here:
+    a value outside the vocabulary raises instead of becoming 0, the [MASK] token,
+    which is reserved for positions masked on purpose."""
+    missing = [(k, v) for k, v in pairs if v == "[MASK]" or v not in stoi[k]]
+    if missing: raise ValueError(f"outside {source} vocabulary: {missing}")
+    return [stoi[k][v] for k, v in pairs]
+
 class Vocab:
     """One vocabulary per field type; species/ability/item/nature share a column each,
     the four move columns share a single move vocabulary."""
@@ -46,12 +54,16 @@ class Vocab:
             self.itos[k] = vs
             self.stoi[k] = {v: i for i, v in enumerate(vs)}
         self.sizes = {k: len(v) for k, v in self.itos.items()}
+    @property
+    def source(self):
+        return "corpus" if getattr(self, "regulation", None) is None else "Regulation M-B"
     def key(self, col):
         k = FIELDS[col % NF]
         return "move" if k.startswith("m") and k != "nature" else k
     def encode(self, team):
         f = team_fields(team)
-        return np.array([self.stoi[self.key(i)].get(v, 0) for i, v in enumerate(f)], dtype=np.int64)
+        return np.array(strict_ids(self.stoi, [(self.key(i), v) for i, v in enumerate(f)], self.source),
+                        dtype=np.int64)
     def decode_field(self, col, idx):
         return self.itos[self.key(col)][idx]
 

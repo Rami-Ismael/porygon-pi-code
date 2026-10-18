@@ -117,8 +117,8 @@ def train():
     for r in rows:
         t = parse_team_text(r["paste"])
         if len(t) != 6: drop += 1; continue
-        e = V.encode(t)
-        if (e == 0).any(): drop += 1; continue     # a field outside the corpus vocabulary
+        try: e = V.encode(t)
+        except ValueError: drop += 1; continue     # a field outside the corpus vocabulary
         X.append(e); W.append(r["y"])
     X, W = np.stack(X), np.array(W, dtype=np.float32)
     Xc = np.stack([V.encode(t) for t in corpus]); Wc = np.full(len(Xc), np.nan, np.float32)

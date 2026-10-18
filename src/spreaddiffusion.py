@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np, torch
 import torch.nn as nn, torch.nn.functional as F
 from corpus import parse_team, load_corpus, norm, STATS, dex_entry, MEGA_STONE_OF
-from encode import Vocab, Legality, canon, NSLOT
+from encode import Vocab, Legality, canon, NSLOT, strict_ids
 import diffusion as D
 from wrdiffusion import load_labelled, wr_bin, NBIN, WNULL, EDGES
 
@@ -41,7 +41,7 @@ class SpreadVocab:
             ms = sorted(s["moves"], key=norm) + [""] * (4 - len(s["moves"]))
             vals = [norm(s["species"]), norm(s["ability"]), norm(s["item"]),
                     norm(ms[0]), norm(ms[1]), norm(ms[2]), norm(ms[3]), norm(s["nature"])]
-            row = [self.stoi[self.base.key(j)].get(v, 0) for j, v in enumerate(vals)]
+            row = strict_ids(self.stoi, [(self.base.key(j), v) for j, v in enumerate(vals)], self.base.source)
             row += [min(32, max(0, int(s["evs"].get(st, 0)))) + 1 for st in STATS]
             out += row
         return np.array(out, dtype=np.int64)
