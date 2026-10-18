@@ -377,7 +377,7 @@ def apply_moveorder(d, V, tables):
 
 
 def train_run(name, cfg):
-    torch.manual_seed(cfg["seed"]); np.random.seed(cfg["seed"])
+    torch.manual_seed(cfg["seed"])
     corpus, V, *_ = X.setup()
     d = load_data()
     tr, val = splits(d)

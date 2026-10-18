@@ -169,7 +169,7 @@ def load_all():
     return teams, V, L, X, Y
 
 def train(epochs=800, seed=0):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     teams, V, L, X, Y = load_all()
     rng = np.random.default_rng(seed)
     idx = rng.permutation(len(X)); nte = int(len(X) * .15)

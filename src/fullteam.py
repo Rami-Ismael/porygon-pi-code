@@ -199,7 +199,7 @@ def row_to_paste(V, row):
     return slots
 
 def train_full(epochs=800, seed=0):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     teams, _ = load_corpus(); teams = [t for t in teams if len(t) == 6]
     V = FullVocab(teams); L = Legality(teams)
     X = np.stack([V.encode(t) for t in teams])

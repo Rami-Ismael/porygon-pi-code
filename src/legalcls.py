@@ -131,7 +131,7 @@ def synth_rows(V, L, C, base_rows, n, rng):
     return np.stack(X), np.array(Y)
 
 def train(epochs=40, seed=0, n_rows=200_000, device=None, max_steps=None):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     dev = device or DEV
     V, L, corpus, teams, wrs = S.build(); C = S.SpreadConstraints(V, L)
     rng = np.random.default_rng(seed)

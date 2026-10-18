@@ -89,7 +89,7 @@ def build_data(seed=0, n_synth=20000):
     return V, L, C, corpus, teams, X, Y, W, G
 
 def train(epochs=60, seed=0, batch=128):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     V, L, C, corpus, teams, X, Y, W, G = build_data(seed)
     print(f"data: {len(X):,} rows · legal {G.mean():.1%} · with win-rate label {(W != WNULL).mean():.1%}", flush=True)
     rng = np.random.default_rng(seed); idx = rng.permutation(len(X)); nte = int(len(X) * .05); tr, te = idx[nte:], idx[:nte]

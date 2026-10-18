@@ -114,7 +114,7 @@ def build_vocab(teams):
     return Vocab(teams), Legality(teams)
 
 def train(epochs=30, seed=0, batch=256, init_from=""):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     teams, W = load_hps()
     V, L = build_vocab(teams)
     X = np.stack([V.encode(t) for t in teams])

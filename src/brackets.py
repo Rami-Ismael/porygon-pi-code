@@ -85,7 +85,7 @@ def load_pool(kind):
 
 
 def train(V, teams, wrs, balanced, seed=0):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     X = np.stack([V.encode(t) for t in teams])
     Y = np.array([D.style_of(t) for t in teams])
     B = np.array([W.wr_bin(w) for w in wrs])

@@ -151,7 +151,7 @@ def main():
     a = ap.parse_args()
     if a.smoke: a.per, a.battles = 4, 2
 
-    random.seed(a.seed); np.random.seed(a.seed); torch.manual_seed(a.seed)
+    random.seed(a.seed); torch.manual_seed(a.seed)
     rng = np.random.default_rng(a.seed)
 
     model, V, L, corpus, lab = W.load_model()

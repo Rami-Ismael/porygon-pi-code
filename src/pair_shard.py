@@ -33,8 +33,7 @@ def _base(s):
 
 async def run_job(pol, job, conc, port, seed):
     if seed is not None:
-        import numpy as _np
-        random.seed(seed); torch.manual_seed(seed); _np.random.seed(seed)
+        random.seed(seed); torch.manual_seed(seed)
     srv = ServerConfiguration(f"ws://localhost:{port}/showdown/websocket",
                               "https://play.pokemonshowdown.com/action.php?")
     kw = dict(server_configuration=srv, battle_format=format_map["mb"], log_level=40,

@@ -330,7 +330,7 @@ def retrain(ctx, g, epochs=30, seed=0, batch=256, cap=0.5):
     admitted generation up to g, synthetic capped at `cap` x real rows."""
     import torch.nn as nn
     import random as _random
-    _random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    _random.seed(seed); torch.manual_seed(seed)
     keep = np.setdiff1d(np.arange(len(ctx.X)), ctx.holdout)
     n_real = len(keep)
     Xs, Ws = [ctx.X[keep]], [ctx.W[keep]]

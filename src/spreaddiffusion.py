@@ -149,7 +149,7 @@ def build():
     return V, L, corpus, teams, wrs
 
 def train(epochs=200, seed=0):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     V, L, corpus, teams, wrs = build()
     X = np.stack([V.encode(t) for t in teams]); Y = np.array([D.style_of(t) for t in teams]); W = np.array([wr_bin(w) for w in wrs])
     rng = np.random.default_rng(seed); idx = rng.permutation(len(X)); nte = int(len(X) * .1); tr, te = idx[nte:], idx[:nte]

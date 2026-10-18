@@ -98,7 +98,7 @@ def build_vocab():
     return V, L, corpus, teams, wrs
 
 def train(epochs=300, seed=0):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     V, L, corpus, teams, wrs = build_vocab()
     X = np.stack([V.encode(t) for t in teams])
     Y = np.array([D.style_of(t) for t in teams])

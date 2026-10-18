@@ -301,7 +301,7 @@ def refit(V, teams, wrs, idx, conditional, epochs, seed):
     training example, so the fitted density carries no label at all and the elite
     filter is doing all of the work. That is the classic cross-entropy method.
     """
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     sub = [teams[i] for i in idx]
     X = np.stack([V.encode(t) for t in sub])
     if conditional:
@@ -389,7 +389,7 @@ def main():
         if a.out is None and os.path.exists(outfile): os.remove(outfile)
     if a.out: outfile = a.out
 
-    random.seed(a.seed); np.random.seed(a.seed); torch.manual_seed(a.seed)
+    random.seed(a.seed); torch.manual_seed(a.seed)
     corpus, _ = load_corpus(); corpus = [t for t in corpus if len(t) == 6]
     lab_teams, lab_wrs = W.load_labelled()
     V = Vocab(corpus + lab_teams); L = Legality(corpus); C = D.Constraints(V, L)

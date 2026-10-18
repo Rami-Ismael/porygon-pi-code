@@ -74,7 +74,7 @@ class SlotLegalDiffusion(LD.LegalDiffusion):
         return tot / max(n, 1)
 
 def train(epochs=60, seed=0, batch=128):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     os.environ["LD_HEAVY"] = "1"; LD.HEAVY = True
     V, L, C, corpus, teams, X, Y, W, G = LD.build_data(seed, n_synth=30000)
     SL = np.stack([slot_labels(r, C) for r in X])
