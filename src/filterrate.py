@@ -131,6 +131,7 @@ sys.path.insert(0, "/tmp/vgc-pilot/src")
 import diffusion as D, wrdiffusion as W
 import loop as LP                      # PMI, opponents
 import pool
+from checkpoints import load_checkpoint
 from corpus import load_corpus, norm, STATS
 from encode import Vocab, Legality, canon, NF, NSLOT
 from propose import Validator, slot_to_text, team_to_text
@@ -300,7 +301,7 @@ def refit(V, teams, wrs, idx, conditional, epochs, seed):
     training example, so the fitted density carries no label at all and the elite
     filter is doing all of the work. That is the classic cross-entropy method.
     """
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     sub = [teams[i] for i in idx]
     X = np.stack([V.encode(t) for t in sub])
     if conditional:
@@ -312,7 +313,7 @@ def refit(V, teams, wrs, idx, conditional, epochs, seed):
     m = W.TeamDiffusionWR(V, d=192, nhead=6).to(W.DEV)
     init_ok = False
     try:
-        ck = torch.load("/tmp/vgc-pilot/wrdiffusion.pt", map_location=W.DEV)
+        ck = load_checkpoint("/tmp/vgc-pilot/wrdiffusion.pt", map_location=W.DEV)
         m.load_state_dict(ck["sd"]); init_ok = True
     except Exception as e:
         print(f"    checkpoint unusable, training from scratch: {str(e)[:80]}", flush=True)
@@ -388,7 +389,7 @@ def main():
         if a.out is None and os.path.exists(outfile): os.remove(outfile)
     if a.out: outfile = a.out
 
-    random.seed(a.seed); np.random.seed(a.seed); torch.manual_seed(a.seed)
+    random.seed(a.seed); torch.manual_seed(a.seed)
     corpus, _ = load_corpus(); corpus = [t for t in corpus if len(t) == 6]
     lab_teams, lab_wrs = W.load_labelled()
     V = Vocab(corpus + lab_teams); L = Legality(corpus); C = D.Constraints(V, L)

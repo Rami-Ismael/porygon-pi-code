@@ -13,9 +13,12 @@ Stat Point budget (a value that would push the slot over 66 is masked out).
 import argparse, json, random, sys
 from pathlib import Path
 import numpy as np, torch
+from beartype import beartype
+from jaxtyping import Int64, jaxtyped
 import torch.nn as nn, torch.nn.functional as F
+from checkpoints import load_checkpoint
 from corpus import parse_team, load_corpus, norm, STATS, dex_entry, MEGA_STONE_OF
-from encode import Vocab, Legality, canon, NSLOT
+from encode import Vocab, Legality, canon, NSLOT, strict_ids
 import diffusion as D
 from wrdiffusion import load_labelled, wr_bin, NBIN, WNULL, EDGES
 
@@ -35,13 +38,14 @@ class SpreadVocab:
     def key(self, col):
         j = col % NF2
         return "stat" if j >= 8 else self.base.key(j)
-    def encode(self, team):
+    @jaxtyped(typechecker=beartype)
+    def encode(self, team) -> Int64[np.ndarray, "fields"]:
         out = []
         for s in canon(team):
             ms = sorted(s["moves"], key=norm) + [""] * (4 - len(s["moves"]))
             vals = [norm(s["species"]), norm(s["ability"]), norm(s["item"]),
                     norm(ms[0]), norm(ms[1]), norm(ms[2]), norm(ms[3]), norm(s["nature"])]
-            row = [self.stoi[self.base.key(j)].get(v, 0) for j, v in enumerate(vals)]
+            row = strict_ids(self.stoi, [(self.base.key(j), v) for j, v in enumerate(vals)], self.base.source)
             row += [min(32, max(0, int(s["evs"].get(st, 0)))) + 1 for st in STATS]
             out += row
         return np.array(out, dtype=np.int64)
@@ -145,7 +149,7 @@ def build():
     return V, L, corpus, teams, wrs
 
 def train(epochs=200, seed=0):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     V, L, corpus, teams, wrs = build()
     X = np.stack([V.encode(t) for t in teams]); Y = np.array([D.style_of(t) for t in teams]); W = np.array([wr_bin(w) for w in wrs])
     rng = np.random.default_rng(seed); idx = rng.permutation(len(X)); nte = int(len(X) * .1); tr, te = idx[nte:], idx[:nte]
@@ -170,7 +174,7 @@ def train(epochs=200, seed=0):
 
 def load_model():
     V, L, corpus, teams, wrs = build()
-    ck = torch.load(CKPT, map_location=DEV); assert ck["itos"]["species"] == V.itos["species"]
+    ck = load_checkpoint(CKPT, map_location=DEV); assert ck["itos"]["species"] == V.itos["species"]
     m = SpreadDiffusion(V).to(DEV); m.load_state_dict(ck["sd"]); m.eval(); return m, V, L, corpus, teams
 
 @torch.no_grad()

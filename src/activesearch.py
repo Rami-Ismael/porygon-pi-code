@@ -52,6 +52,7 @@ import diffusion as D
 import hpsdiffusion as H
 from hps_generate import Validator, slot_to_text
 import pool
+from checkpoints import load_checkpoint
 
 ROOT = Path("/tmp/vgc-pilot/activesearch")
 RESULTS = "/Users/ramiismael/Documents/code/vgc-team-generator-pilot/results/activesearch.json"
@@ -184,7 +185,7 @@ def resteer(V, elite_teams, epochs=FT_EPOCHS, lr=FT_LR, seed=0, batch=64):
     """p_g = finetune(p0, elites).  Always from p0, never from p_{g-1}."""
     torch.manual_seed(seed)
     m = H.TeamDiffusionHPS(V).to(D.DEV)
-    m.load_state_dict(torch.load(P0_CKPT, map_location=D.DEV)["sd"])
+    m.load_state_dict(load_checkpoint(P0_CKPT, map_location=D.DEV)["sd"])
     xt, wt = _tensors(V, elite_teams)
     opt = torch.optim.AdamW(m.parameters(), lr=lr, weight_decay=.01)
     sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, epochs)
@@ -409,7 +410,7 @@ def main(smoke=False):
     # ---- p0 ----
     if os.path.exists(P0_CKPT) and not smoke:
         p0 = H.TeamDiffusionHPS(V).to(D.DEV)
-        p0.load_state_dict(torch.load(P0_CKPT, map_location=D.DEV)["sd"]); p0.eval()
+        p0.load_state_dict(load_checkpoint(P0_CKPT, map_location=D.DEV)["sd"]); p0.eval()
         print(f"  p0 loaded from {P0_CKPT}", flush=True)
     else:
         print(f"training p0 on the corpus, {P0_EPOCHS} epochs …", flush=True)

@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import matchup_db as MDB
 
 PY = "/tmp/vgc-pilot/.venv/bin/python"
+LOG = os.environ.get("SUPERVISOR_LOG", "/tmp/vgc-pilot/supervisor")   # SUPERVISOR_LOG=<prefix>: own log files per queue
 STALL, POLL, POLICY = 480, 30, 1
 
 
@@ -53,7 +54,7 @@ def main():
     con = MDB.connect(); attempt = 0
     while True:
         attempt += 1
-        p = subprocess.Popen([PY, script, stage], stdout=open(f"/tmp/vgc-pilot/supervisor_{stage}.log", "a"),
+        p = subprocess.Popen([PY, script, stage], stdout=open(f"{LOG}_{stage}.log", "a"),
                              stderr=subprocess.STDOUT)
         print(f"[attempt {attempt}] {script} {stage} pid {p.pid}", flush=True)
         stalled = False
@@ -79,8 +80,8 @@ def main():
         print(f"[attempt {attempt}] {'stalled' if stalled else f'exit {p.returncode}'} · recovered {jobs} jobs / {n} battles · restarting",
               flush=True)
     for st in then:
-        subprocess.run([PY, script, st], stdout=open(f"/tmp/vgc-pilot/supervisor_{st}.out", "w"), stderr=subprocess.STDOUT)
-        print(f"ran {st} -> /tmp/vgc-pilot/supervisor_{st}.out", flush=True)
+        subprocess.run([PY, script, st], stdout=open(f"{LOG}_{st}.out", "w"), stderr=subprocess.STDOUT)
+        print(f"ran {st} -> {LOG}_{st}.out", flush=True)
     print("SUPERVISOR_DONE", flush=True)
 
 

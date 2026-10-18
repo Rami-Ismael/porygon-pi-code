@@ -28,6 +28,7 @@ from corpus import load_corpus, parse_team, norm, STATS
 from encode import Vocab, Legality, NF, NSLOT
 from propose import Validator, slot_to_text
 import pool
+from checkpoints import load_checkpoint
 
 MIN_PAIR = 20
 
@@ -106,7 +107,7 @@ def main():
     lab_teams, _ = W.load_labelled()
     V = Vocab(corpus + lab_teams); L = Legality(corpus); C = D.Constraints(V, L)
     model = W.TeamDiffusionWR(V).to(D.DEV)
-    model.load_state_dict(torch.load("/tmp/vgc-pilot/wrdiffusion.pt", map_location=D.DEV)["sd"]); model.eval()
+    model.load_state_dict(load_checkpoint("/tmp/vgc-pilot/wrdiffusion.pt", map_location=D.DEV)["sd"]); model.eval()
     ws, wp, r2 = fit_ridge(V)
     look, spreads = {}, defaultdict(list)
     for t in corpus + lab_teams:

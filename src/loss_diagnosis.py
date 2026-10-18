@@ -33,8 +33,8 @@ def load_split():
     for r in rows:
         t = parse_team_text(r["paste"])
         if len(t) != 6: continue
-        e = V.encode(t)
-        if (e == 0).any(): continue
+        try: e = V.encode(t)
+        except ValueError: continue                # a field outside the corpus vocabulary
         Xs.append(e); W.append(r["y"])
     Xs, W = np.stack(Xs), np.array(W, np.float32)
     idx = np.random.default_rng(X.SEED).permutation(len(Xs)); te, tr = idx[:500], idx[500:]   # train()'s split

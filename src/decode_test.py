@@ -3,13 +3,14 @@ from corpus import load_corpus
 from encode import Vocab, Legality, NF, NSLOT
 from model import MaskedFieldModel
 from pilot import evaluate, memorization_stats, COLS, set_seed
+from checkpoints import load_checkpoint
 DEV="mps" if torch.backends.mps.is_available() else "cpu"
 set_seed(0); rng=np.random.default_rng(0)
 teams,_=load_corpus(); teams=[t for t in teams if len(t)==6]
 V,L=Vocab(teams),Legality(teams)
 X=np.stack([V.encode(t) for t in teams]); idx=rng.permutation(len(X)); nt=int(len(X)*.15)
 Xte,Xtr=X[idx[:nt]],X[idx[nt:]]
-m=MaskedFieldModel(V).to(DEV); m.load_state_dict(torch.load("/tmp/vgc-pilot/ck.pt")["sd"]); m.eval()
+m=MaskedFieldModel(V).to(DEV); m.load_state_dict(load_checkpoint("/tmp/vgc-pilot/ck.pt")["sd"]); m.eval()
 
 @torch.no_grad()
 def gen(n, temp, order, seed):

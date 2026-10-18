@@ -51,8 +51,8 @@ def test_split(V):
     for r in rows:
         t = parse_team_text(r["paste"])
         if len(t) != 6: continue
-        e = V.encode(t)
-        if (e == 0).any(): continue
+        try: e = V.encode(t)
+        except ValueError: continue                # a field outside the corpus vocabulary
         Xs.append(e); W.append(r["y"])
     Xs, W = np.stack(Xs), np.array(W, np.float32)
     idx = np.random.default_rng(X.SEED).permutation(len(Xs))
@@ -107,8 +107,8 @@ def main():
         t = parse_team_text(p)
         e = None
         if len(t) == 6:
-            e = V.encode(t)
-            if (e == 0).any(): e = None
+            try: e = V.encode(t)
+            except ValueError: e = None            # a field outside the corpus vocabulary
         cache[p] = e
         return e
 

@@ -17,6 +17,8 @@ from collections import defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from slot_order import MODE as SLOT_ORDER, POLICY_TAG   # Pokémon order shuffled every battle (src/slot_order.py)
 REPO = HERE.parent
 DEFAULT_DB = Path(os.environ.get("MATCHUP_DB", Path.home() / "vgc-data" / "matchup_regmb.sqlite"))
 PASTES = Path(os.environ.get("MATCHUP_PASTES", Path.home() / "vgc-data" / "pastes"))
@@ -165,9 +167,10 @@ def sha256_file(p, n=16):
 
 def get_policy(con, row_policy=None, col_policy=None, simulator=None, note=None):
     """The fixed battle configuration. Default: behaviour-cloning policy on both sides,
-    identified by checkpoint hash, on the local Showdown revision."""
+    identified by checkpoint hash, on the local Showdown revision. Shuffled-slot battles
+    (the default, src/slot_order.py) carry POLICY_TAG, so they get their own policy_id."""
     if row_policy is None:
-        row_policy = f"bc_100.zip:{sha256_file(POLICY_FILE)}"
+        row_policy = f"bc_100.zip:{sha256_file(POLICY_FILE)}{POLICY_TAG}"
     col_policy = col_policy or row_policy
     if simulator is None:
         try:
@@ -320,13 +323,29 @@ def run_jobs(con, jobs, seed=None, conc=50, quiet=False):
     if failed: print(f"  WARNING {len(failed)} shard(s) failed: {failed[0][:200]}", flush=True)
     return results, unattributed, secs
 
+run_jobs.slot_order = SLOT_ORDER     # pair_shard.py reads the same VGC_SLOT_ORDER
+
+def check_slot_order(con, policy_id, runner):
+    """Refuse to add battles to a policy whose cells were battled in the other slot order.
+    Runners without a slot_order attribute (test doubles) are not checked."""
+    mode = getattr(runner, "slot_order", None)
+    if mode is None: return
+    row_policy = con.execute("SELECT row_policy FROM policy WHERE policy_id=?", (policy_id,)).fetchone()[0]
+    tagged = "+slots-shuffled" in row_policy
+    if tagged != (mode == "shuffled"):
+        raise ValueError(f"policy {policy_id} ({row_policy}) was battled with "
+                         f"{'shuffled' if tagged else 'listed'} slot order but this runner uses {mode}; "
+                         "use get_policy() / runner.policy_id() for the current order, or set VGC_SLOT_ORDER")
+
 def ensure(con, policy_id, rows, cols, per_cell, seed=None, runner=None, note=None):
     """The cache entry point: make every (row, col) cell hold >= per_cell battles, running
     only the deficit. Returns the number of battles actually run (0 when fully cached)."""
     need = plan(con, policy_id, rows, cols, per_cell)
     if not need: return 0
     jobs = jobs_for(con, need)
-    results, unattributed, secs = (runner or run_jobs)(con, jobs, seed=seed)
+    runner = runner or run_jobs
+    check_slot_order(con, policy_id, runner)
+    results, unattributed, secs = runner(con, jobs, seed=seed)
     record(con, policy_id, results, seconds=secs, seed=seed, note=note, unattributed=unattributed)
     return sum(w + l + t for _, _, w, l, t in results)
 

@@ -20,9 +20,11 @@ import argparse, json, random
 from collections import Counter, defaultdict
 from pathlib import Path
 import numpy as np, torch
+from beartype import beartype
+from jaxtyping import Int64, jaxtyped
 import torch.nn as nn, torch.nn.functional as F
 from corpus import load_corpus, norm, STATS, dex_entry, MEGA_STONE_OF
-from encode import Vocab as BaseVocab, Legality, canon, NSLOT
+from encode import Vocab as BaseVocab, Legality, canon, NSLOT, strict_ids
 import diffusion as D
 
 NF2 = 9                       # 8 categorical + 1 spread
@@ -50,15 +52,15 @@ class FullVocab:
         j = col % NF2
         if j == 8: return "spread"
         return self.base.key(j)          # base indexes by field within a slot
-    def encode(self, team):
+    @jaxtyped(typechecker=beartype)
+    def encode(self, team) -> Int64[np.ndarray, "fields"]:
         out = []
         for s in canon(team):
             ms = sorted(s["moves"], key=norm) + [""] * (4 - len(s["moves"]))
             vals = [norm(s["species"]), norm(s["ability"]), norm(s["item"]),
                     norm(ms[0]), norm(ms[1]), norm(ms[2]), norm(ms[3]), norm(s["nature"])]
-            row = [self.stoi[self.base.key(j)].get(v, 0) for j, v in enumerate(vals)]
-            row.append(self.stoi["spread"].get(spread_key(s["evs"]), 0))
-            out += row
+            pairs = [(self.base.key(j), v) for j, v in enumerate(vals)] + [("spread", spread_key(s["evs"]))]
+            out += strict_ids(self.stoi, pairs, self.base.source)
         return np.array(out, dtype=np.int64)
     def decode_field(self, col, idx):
         return self.itos[self.key(col)][idx]
@@ -197,7 +199,7 @@ def row_to_paste(V, row):
     return slots
 
 def train_full(epochs=800, seed=0):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     teams, _ = load_corpus(); teams = [t for t in teams if len(t) == 6]
     V = FullVocab(teams); L = Legality(teams)
     X = np.stack([V.encode(t) for t in teams])

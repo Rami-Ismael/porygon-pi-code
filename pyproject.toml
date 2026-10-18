@@ -1,0 +1,5 @@
+[tool.ruff.lint]
+select = ["NPY", "TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"torch.load".msg = "Use load_checkpoint from src/checkpoints.py, which sets weights_only."

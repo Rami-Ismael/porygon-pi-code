@@ -13,6 +13,7 @@ which the sampler adds to the diffusion logits scaled by cls_scale.
 import argparse, random, sys
 import numpy as np, torch
 import torch.nn as nn, torch.nn.functional as F
+from checkpoints import load_checkpoint
 from encode import NSLOT
 import diffusion as D
 import spreaddiffusion as S
@@ -130,7 +131,7 @@ def synth_rows(V, L, C, base_rows, n, rng):
     return np.stack(X), np.array(Y)
 
 def train(epochs=40, seed=0, n_rows=200_000, device=None, max_steps=None):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     dev = device or DEV
     V, L, corpus, teams, wrs = S.build(); C = S.SpreadConstraints(V, L)
     rng = np.random.default_rng(seed)
@@ -167,7 +168,7 @@ def train(epochs=40, seed=0, n_rows=200_000, device=None, max_steps=None):
     torch.save({"sd": m.state_dict()}, CKPT); print("saved", CKPT, flush=True)
 
 def load(V):
-    m = LegalClassifier(V).to(DEV); m.load_state_dict(torch.load(CKPT, map_location=DEV)["sd"]); m.eval(); return m
+    m = LegalClassifier(V).to(DEV); m.load_state_dict(load_checkpoint(CKPT, map_location=DEV)["sd"]); m.eval(); return m
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("--epochs", type=int, default=40); ap.add_argument("--rows", type=int, default=200_000)

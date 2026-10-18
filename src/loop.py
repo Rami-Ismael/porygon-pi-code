@@ -19,6 +19,7 @@ from collections import Counter, defaultdict
 import numpy as np, torch
 sys.path.insert(0, "/tmp/vgc-pilot/src")
 import diffusion as D, wrdiffusion as W
+from checkpoints import load_checkpoint
 from corpus import load_corpus, parse_team, norm, STATS
 from encode import Vocab, Legality, canon, NF, NSLOT
 from propose import Validator, slot_to_text, team_to_text
@@ -125,7 +126,7 @@ def main(smoke=False):
     # separate pools per loop
     pools = {"diffusion": (list(lab_teams), list(lab_wrs)), "copypaste": (list(lab_teams), list(lab_wrs))}
     model = W.TeamDiffusionWR(V).to(W.DEV)
-    ck = torch.load("/tmp/vgc-pilot/wrdiffusion.pt", map_location=W.DEV)
+    ck = load_checkpoint("/tmp/vgc-pilot/wrdiffusion.pt", map_location=W.DEV)
     try: model.load_state_dict(ck["sd"]); print("diffusion: initialised from wrdiffusion.pt", flush=True)
     except Exception as e: print("diffusion: vocab mismatch, training from scratch this round:", str(e)[:80], flush=True)
     model.eval()

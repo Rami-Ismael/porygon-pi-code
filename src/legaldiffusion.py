@@ -15,6 +15,7 @@ import argparse, json, random, sys, time
 from pathlib import Path
 import numpy as np, torch
 import torch.nn as nn, torch.nn.functional as F
+from checkpoints import load_checkpoint
 from corpus import load_corpus, norm, STATS
 from encode import Legality, NSLOT
 import diffusion as D
@@ -88,7 +89,7 @@ def build_data(seed=0, n_synth=20000):
     return V, L, C, corpus, teams, X, Y, W, G
 
 def train(epochs=60, seed=0, batch=128):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     V, L, C, corpus, teams, X, Y, W, G = build_data(seed)
     print(f"data: {len(X):,} rows · legal {G.mean():.1%} · with win-rate label {(W != WNULL).mean():.1%}", flush=True)
     rng = np.random.default_rng(seed); idx = rng.permutation(len(X)); nte = int(len(X) * .05); tr, te = idx[nte:], idx[:nte]
@@ -115,7 +116,7 @@ def train(epochs=60, seed=0, batch=128):
 def load_model():
     corpus, _ = load_corpus(); corpus = [t for t in corpus if len(t) == 6]
     teams, wrs = load_labelled(); V = SpreadVocab(corpus + teams); L = Legality(corpus)
-    ck = torch.load(CKPT, map_location=DEV); assert ck["itos"]["species"] == V.itos["species"]
+    ck = load_checkpoint(CKPT, map_location=DEV); assert ck["itos"]["species"] == V.itos["species"]
     m = LegalDiffusion(V).to(DEV); m.load_state_dict(ck["sd"]); m.eval(); return m, V, L, corpus, teams
 
 @torch.no_grad()

@@ -36,6 +36,7 @@ import numpy as np
 import torch, torch.nn as nn, torch.nn.functional as F
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
+from checkpoints import load_checkpoint
 import asked_vs_got as X
 import diffusion as D
 import hpsdiffusion as H
@@ -50,6 +51,7 @@ OUT = RES / "lossdown.json"
 CK = Path.home() / ".local/share/vgc-pilot-runtime/lossdown"     # checkpoints outside iCloud
 KEYS = ["species", "ability", "item", "move", "nature"]
 NAN = float("nan")
+COND_NOISE = None      # CADS: (s, gamma) for the current decode step, set by the sampler; None = clean condition
 
 
 # ---------------------------------------------------------------- legality tables (structured output)
@@ -193,6 +195,7 @@ class Net(nn.Module):
     def wvec(self, w):
         null = torch.isnan(w); z = torch.nan_to_num(w, 0.0).view(-1, 1)
         v = self.wproj(torch.cat([z, torch.sin(z * self.freqs), torch.cos(z * self.freqs)], 1))
+        if COND_NOISE is not None: v = cads_noise(v, *COND_NOISE)      # docs/guidance-timing-cads.md
         return torch.where(null.view(-1, 1), self.wnull.expand_as(v), v)
 
     def mvec(self, r):
@@ -219,6 +222,14 @@ class Net(nn.Module):
 
     def logits(self, h):
         return {k: self.head[k](h[:, cols]) for k, cols in COLS_BY_KEY.items()}
+
+
+def cads_noise(v, s, gamma):
+    """CADS (Sadat et al., ICLR 2024) on a condition embedding v [B, d]: sqrt(gamma) v + s sigma_v sqrt(1 - gamma) eps,
+    rescaled to v's own per-row mean and standard deviation (psi = 1). s is relative to sigma_v."""
+    mu, sd = v.mean(1, keepdim=True), v.std(1, keepdim=True)
+    y = math.sqrt(gamma) * v + s * sd * math.sqrt(1.0 - gamma) * torch.randn_like(v)
+    return (y - y.mean(1, keepdim=True)) / y.std(1, keepdim=True).clamp_min(1e-8) * sd + mu
 
 
 def logprobs_fn(net, tables=None, rules=("clause", "compat", "order"), tag_id=None):
@@ -319,7 +330,8 @@ def splits(d, nval=2000, seed=7):
 DEFAULT = dict(d=192, nlayer=4, nhead=6, dropout=0.1, time_cond=1, tags=0, legal=1, rules="clause,compat,order",
                strat=1, sched="1,1,1,1,1", objective="elbo", epochs=10, batch=256, lr=5e-4, wd=0.01,
                warmup=500, ema=0.999, p_uncond=0.15, data="all", warm="", seed=0, final=0, maxmin=0,
-               sources="model,real,fill,hps", upw=1, force=0, prime=1, mrow=0, moveorder="alpha")
+               sources="model,real,fill,hps", upw=1, force=0, prime=1, mrow=0, moveorder="alpha",
+               fambal=0)     # 1: draw rows with replacement, every tag_of family at equal expected share (docs/flat-prior-retrain.md)
 
 
 def sched_tensor(s):
@@ -365,7 +377,7 @@ def apply_moveorder(d, V, tables):
 
 
 def train_run(name, cfg):
-    torch.manual_seed(cfg["seed"]); np.random.seed(cfg["seed"])
+    torch.manual_seed(cfg["seed"])
     corpus, V, *_ = X.setup()
     d = load_data()
     tr, val = splits(d)
@@ -402,7 +414,7 @@ def train_run(name, cfg):
     digits = Digits(V, d["X"][tr]) if cfg["prime"] == 2 else None
     if cfg["warm"]:
         wp = CK / cfg["warm"] if (CK / cfg["warm"]).exists() else RES / cfg["warm"]
-        sd = torch.load(wp, map_location=DEV)["sd"]
+        sd = load_checkpoint(wp, map_location=DEV)["sd"]
         own = net.state_dict()
         sd = {k: v for k, v in sd.items() if k in own and own[k].shape == v.shape}
         net.load_state_dict(sd, strict=False); print(f"warm start from {cfg['warm']}: {len(sd)} tensors", flush=True)
@@ -415,7 +427,8 @@ def train_run(name, cfg):
     print(f"[{name}] {len(tr)} teams · {sum(p.numel() for p in net.parameters()):,} params · {total} steps · {DEV}", flush=True)
     t0 = time.perf_counter(); step = 0; log = []
     for ep in range(cfg["epochs"]):
-        net.train(); perm = torch.randperm(len(tr), device=DEV); run = 0.0
+        net.train(); run = 0.0
+        perm = torch.randperm(len(tr), device=DEV) if famw is None else torch.multinomial(famw, len(tr), replacement=True)
         for i in range(0, len(tr), cfg["batch"]):
             b = perm[i:i + cfg["batch"]]
             loss = batch_loss(net, tables, rules, xtr[b], wtr[b], ttr[b] if cfg["tags"] else None, sched, cfg, digits)
@@ -428,6 +441,10 @@ def train_run(name, cfg):
                     for pe, p in zip(ema.parameters(), net.parameters()): pe.lerp_(p, 1 - dec)
             run += float(loss.detach())
         net.eval()
+    famw = None
+    if cfg["fambal"]:                                                 # weight = 1 / rows in the row's family: equal mass per family
+        cnt = np.bincount(TAG[tr], minlength=NTAG); famw = torch.as_tensor(1.0 / cnt[TAG[tr]], dtype=torch.float32, device=DEV)
+        print("family balance: " + ", ".join(f"tag{t} {cnt[t]} rows" for t in range(NTAG) if cnt[t]), flush=True)
         m = ema if ema is not None else net
         vx, vw = d["X"][val], (cond_matrix(d, val) if cfg["mrow"] else d["W"][val])
         if digits is not None:
@@ -561,7 +578,7 @@ def baseline():
             "temperature_p0.pt (unconditional p0)": ("hps", RES / "temperature_p0.pt")}
     for name, (kind, path) in olds.items():
         m = (X.ContinuousWR(V) if kind == "cwr" else H.TeamDiffusionHPS(V)).to(DEV)
-        m.load_state_dict(torch.load(path, map_location=DEV)["sd"]); m.eval()
+        m.load_state_dict(load_checkpoint(path, map_location=DEV)["sd"]); m.eval()
         for masked in (False, True):
             f = logprobs_fn(m, tables if masked else None)
             out = {}
@@ -715,7 +732,7 @@ def exact(names):
 
 # ---------------------------------------------------------------- ensembles of saved runs
 def load_net(name, V):
-    ck = torch.load(CK / f"{name}.pt", map_location=DEV)
+    ck = load_checkpoint(CK / f"{name}.pt", map_location=DEV)
     cfg = dict(DEFAULT); cfg.update(ck["cfg"])
     net = Net(V, d=cfg["d"], nhead=cfg["nhead"], nlayer=cfg["nlayer"], dropout=cfg["dropout"],
               time_cond=bool(cfg["time_cond"]), ntag=NTAG if cfg["tags"] else 0, prime=cfg["prime"],

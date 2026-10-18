@@ -50,6 +50,7 @@ the best team, and 24-battle labels are winner's-cursed.
 """
 import json, os, shutil, sys, time
 from pathlib import Path
+from checkpoints import load_checkpoint
 from diversity_metrics import Reference, measure
 
 # Comparison preflight/offline diagnostics must work without the battle runtime.
@@ -196,7 +197,7 @@ def resteer(V, teams, beta=0.0, seed=0, batch=64, epochs=None, checkpoint=None):
     """p_g = finetune(p0, multiset) - A.resteer with the loss swapped in."""
     torch.manual_seed(seed)
     m = H.TeamDiffusionHPS(V).to(D.DEV)
-    m.load_state_dict(torch.load(checkpoint or A.P0_CKPT, map_location=D.DEV)["sd"])
+    m.load_state_dict(load_checkpoint(checkpoint or A.P0_CKPT, map_location=D.DEV)["sd"])
     xt, wt = A._tensors(V, teams)
     opt = torch.optim.AdamW(m.parameters(), lr=A.FT_LR, weight_decay=.01)
     epochs = A.FT_EPOCHS if epochs is None else epochs
@@ -330,7 +331,7 @@ def main(smoke=False, only_arms=None, gens=None):
           f"(mean {np.mean(gen0_y):.4f}) · {len(opp)} meta opponents", flush=True)
 
     p0 = H.TeamDiffusionHPS(V).to(D.DEV)
-    p0.load_state_dict(torch.load(A.P0_CKPT, map_location=D.DEV)["sd"]); p0.eval()
+    p0.load_state_dict(load_checkpoint(A.P0_CKPT, map_location=D.DEV)["sd"]); p0.eval()
     ent0 = pred_entropy(p0, V, anchor_teams)
     print(f"  p0 unmasking entropy on the anchors: species {ent0['species']:.3f} · "
           f"other {ent0['other']:.3f} nats", flush=True)

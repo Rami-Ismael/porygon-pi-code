@@ -122,7 +122,8 @@ def build():
     try:
         for tid, paste in start_teams(con):
             team = canon(parse_team_text(paste))
-            if (V.encode(team) == 0).any(): continue                # a field outside the vocabulary
+            try: V.encode(team)
+            except ValueError: continue                             # a field outside the vocabulary
             for task, k in TASKS:
                 for rep in range(REPS):
                     rng = random.Random(f"{SEED}:{tid}:{task}:{k}:{rep}")
