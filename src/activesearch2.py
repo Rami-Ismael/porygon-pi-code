@@ -46,6 +46,7 @@ import hpsdiffusion as H
 from hps_generate import Validator
 import pool
 import activesearch as A
+from checkpoints import load_checkpoint
 
 ROOT = Path("/tmp/vgc-pilot/activesearch2")
 RESULTS = "/Users/ramiismael/Documents/code/vgc-team-generator-pilot/results/activesearch2.json"
@@ -134,7 +135,7 @@ def main(smoke=False):
         print("training p0 …", flush=True)
         A.train_p0(V, corpus_teams, 3 if smoke else A.P0_EPOCHS)
     p0 = H.TeamDiffusionHPS(V).to(D.DEV)
-    p0.load_state_dict(torch.load(A.P0_CKPT, map_location=D.DEV)["sd"]); p0.eval()
+    p0.load_state_dict(load_checkpoint(A.P0_CKPT, map_location=D.DEV)["sd"]); p0.eval()
     print(f"  p0 loaded from {A.P0_CKPT}", flush=True)
 
     val = Validator()

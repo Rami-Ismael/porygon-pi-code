@@ -6,6 +6,7 @@ import numpy as np, torch
 sys.path.insert(0, "/tmp/vgc-pilot/src"); sys.path.insert(0, str(Path(__file__).resolve().parent))
 import lossdown as L, diffusion as D, asked_vs_got as X
 from encode import NF, NSLOT
+from checkpoints import load_checkpoint
 
 corpus, V, *_ = X.setup(); d = L.load_data(); T = L.Tables(V, corpus)
 look = {}
@@ -16,7 +17,7 @@ for t in corpus:
         for m in s["moves"]: look[norm(m)] = m
 name = lambda c, v: look.get(V.decode_field(c, v), V.decode_field(c, v)) or "(none)"
 
-old = X.ContinuousWR(V).to(L.DEV); old.load_state_dict(torch.load(L.RES / "asked_vs_got.pt", map_location=L.DEV)["sd"]); old.eval()
+old = X.ContinuousWR(V).to(L.DEV); old.load_state_dict(load_checkpoint(L.RES / "asked_vs_got.pt", map_location=L.DEV)["sd"]); old.eval()
 F1 = L.load_net("F1_final_medium", V)[0]; G2 = L.load_net("G2_family_matrix_noprtrain", V)[0]
 models = {"old": L.logprobs_fn(old, None), "old_masked": L.logprobs_fn(old, T),
           "new": L.ensemble_fn([L.logprobs_fn(F1, T), L.logprobs_fn(G2, T)])}

@@ -16,6 +16,7 @@ import torch
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from checkpoints import load_checkpoint
 import foundation as FD
 import lossdown as L
 import lossdown_battle as LB
@@ -116,7 +117,7 @@ def members(V, tables, elites, g):
         ck = L.CK / f"{TAG}_g{g}_{name}.pt"
         net, cfg, _ = L.load_net(name, V)
         if ck.exists():
-            net.load_state_dict(torch.load(ck, map_location=L.DEV)["sd"])
+            net.load_state_dict(load_checkpoint(ck, map_location=L.DEV)["sd"])
         elif elites is not None:
             torch.manual_seed(SEED + g)
             Xe = torch.as_tensor(np.stack([e[0] for e in elites]), device=L.DEV)

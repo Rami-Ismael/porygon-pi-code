@@ -131,6 +131,7 @@ sys.path.insert(0, "/tmp/vgc-pilot/src")
 import diffusion as D, wrdiffusion as W
 import loop as LP                      # PMI, opponents
 import pool
+from checkpoints import load_checkpoint
 from corpus import load_corpus, norm, STATS
 from encode import Vocab, Legality, canon, NF, NSLOT
 from propose import Validator, slot_to_text, team_to_text
@@ -312,7 +313,7 @@ def refit(V, teams, wrs, idx, conditional, epochs, seed):
     m = W.TeamDiffusionWR(V, d=192, nhead=6).to(W.DEV)
     init_ok = False
     try:
-        ck = torch.load("/tmp/vgc-pilot/wrdiffusion.pt", map_location=W.DEV)
+        ck = load_checkpoint("/tmp/vgc-pilot/wrdiffusion.pt", map_location=W.DEV)
         m.load_state_dict(ck["sd"]); init_ok = True
     except Exception as e:
         print(f"    checkpoint unusable, training from scratch: {str(e)[:80]}", flush=True)

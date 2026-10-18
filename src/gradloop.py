@@ -46,10 +46,10 @@ import json, os, sys, time
 from pathlib import Path
 
 import numpy as np
-import torch
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from checkpoints import load_checkpoint
 from corpus import parse_team, parse_team_text
 import diffusion as D
 import hpsdiffusion as H
@@ -129,7 +129,7 @@ def main(smoke=False, gens=None, only_arms=None, mode=None, lam=None):
           f"(mean {np.mean(gen0_y):.4f}) · {len(opp)} meta opponents", flush=True)
 
     p0 = H.TeamDiffusionHPS(V).to(D.DEV)
-    p0.load_state_dict(torch.load(A.P0_CKPT, map_location=D.DEV)["sd"]); p0.eval()
+    p0.load_state_dict(load_checkpoint(A.P0_CKPT, map_location=D.DEV)["sd"]); p0.eval()
     val = Validator()
 
     out = (json.load(open(RESULTS)) if os.path.exists(RESULTS) and not smoke

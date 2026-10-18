@@ -15,6 +15,7 @@ import argparse, os, random, sys, time
 from pathlib import Path
 import numpy as np, torch
 import torch.nn as nn, torch.nn.functional as F
+from checkpoints import load_checkpoint
 from corpus import load_corpus, norm
 from encode import Legality, NSLOT
 import diffusion as D
@@ -102,7 +103,7 @@ def train(epochs=60, seed=0, batch=128):
 def load_model():
     corpus, _ = load_corpus(); corpus = [t for t in corpus if len(t) == 6]
     teams, wrs = load_labelled(); V = SpreadVocab(corpus + teams); L = Legality(corpus)
-    ck = torch.load(CKPT, map_location=DEV); m = SlotLegalDiffusion(V).to(DEV); m.load_state_dict(ck["sd"]); m.eval(); return m, V, L, corpus, teams
+    ck = load_checkpoint(CKPT, map_location=DEV); m = SlotLegalDiffusion(V).to(DEV); m.load_state_dict(ck["sd"]); m.eval(); return m, V, L, corpus, teams
 
 @torch.no_grad()
 def sample(model, C, n, wbin=5, g_wr=2.0, sleg=SL_NULL, g_leg=1.0, style="none", constrained=True, temp=1.0, device=DEV):

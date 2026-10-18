@@ -36,6 +36,7 @@ import numpy as np
 import torch, torch.nn as nn, torch.nn.functional as F
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
+from checkpoints import load_checkpoint
 import asked_vs_got as X
 import diffusion as D
 import hpsdiffusion as H
@@ -413,7 +414,7 @@ def train_run(name, cfg):
     digits = Digits(V, d["X"][tr]) if cfg["prime"] == 2 else None
     if cfg["warm"]:
         wp = CK / cfg["warm"] if (CK / cfg["warm"]).exists() else RES / cfg["warm"]
-        sd = torch.load(wp, map_location=DEV)["sd"]
+        sd = load_checkpoint(wp, map_location=DEV)["sd"]
         own = net.state_dict()
         sd = {k: v for k, v in sd.items() if k in own and own[k].shape == v.shape}
         net.load_state_dict(sd, strict=False); print(f"warm start from {cfg['warm']}: {len(sd)} tensors", flush=True)
@@ -577,7 +578,7 @@ def baseline():
             "temperature_p0.pt (unconditional p0)": ("hps", RES / "temperature_p0.pt")}
     for name, (kind, path) in olds.items():
         m = (X.ContinuousWR(V) if kind == "cwr" else H.TeamDiffusionHPS(V)).to(DEV)
-        m.load_state_dict(torch.load(path, map_location=DEV)["sd"]); m.eval()
+        m.load_state_dict(load_checkpoint(path, map_location=DEV)["sd"]); m.eval()
         for masked in (False, True):
             f = logprobs_fn(m, tables if masked else None)
             out = {}
@@ -731,7 +732,7 @@ def exact(names):
 
 # ---------------------------------------------------------------- ensembles of saved runs
 def load_net(name, V):
-    ck = torch.load(CK / f"{name}.pt", map_location=DEV)
+    ck = load_checkpoint(CK / f"{name}.pt", map_location=DEV)
     cfg = dict(DEFAULT); cfg.update(ck["cfg"])
     net = Net(V, d=cfg["d"], nhead=cfg["nhead"], nlayer=cfg["nlayer"], dropout=cfg["dropout"],
               time_cond=bool(cfg["time_cond"]), ntag=NTAG if cfg["tags"] else 0, prime=cfg["prime"],

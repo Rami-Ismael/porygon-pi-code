@@ -24,6 +24,7 @@ import gradguide as GG
 import streamliner as ST
 import matchup_db as MDB
 import hps_generate
+from checkpoints import load_checkpoint
 from hps_generate import Validator, slot_to_text
 from corpus import parse_team_text, norm, STATS
 from encode import NF, NSLOT
@@ -133,7 +134,7 @@ class Gen:
         self.which = which
         self.corpus, self.V, self.C, self.look, self.spreads = X.setup()
         if which == "old":
-            m = X.ContinuousWR(self.V).to(L.DEV); m.load_state_dict(torch.load(X.CKPT, map_location=L.DEV)["sd"]); m.eval()
+            m = X.ContinuousWR(self.V).to(L.DEV); m.load_state_dict(load_checkpoint(X.CKPT, map_location=L.DEV)["sd"]); m.eval()
             self.m = m
         elif which == "v3":                                   # Codex regmb v3: full M-B vocabulary + v3 stone policy
             import regmb_model

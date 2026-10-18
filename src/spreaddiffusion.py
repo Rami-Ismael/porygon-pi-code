@@ -14,6 +14,7 @@ import argparse, json, random, sys
 from pathlib import Path
 import numpy as np, torch
 import torch.nn as nn, torch.nn.functional as F
+from checkpoints import load_checkpoint
 from corpus import parse_team, load_corpus, norm, STATS, dex_entry, MEGA_STONE_OF
 from encode import Vocab, Legality, canon, NSLOT, strict_ids
 import diffusion as D
@@ -170,7 +171,7 @@ def train(epochs=200, seed=0):
 
 def load_model():
     V, L, corpus, teams, wrs = build()
-    ck = torch.load(CKPT, map_location=DEV); assert ck["itos"]["species"] == V.itos["species"]
+    ck = load_checkpoint(CKPT, map_location=DEV); assert ck["itos"]["species"] == V.itos["species"]
     m = SpreadDiffusion(V).to(DEV); m.load_state_dict(ck["sd"]); m.eval(); return m, V, L, corpus, teams
 
 @torch.no_grad()

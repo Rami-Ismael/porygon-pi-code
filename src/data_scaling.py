@@ -16,6 +16,7 @@ import asked_vs_got as X
 import loss_diagnosis as L
 import activesearch as A
 import diffusion as D
+from checkpoints import load_checkpoint
 
 OUT = X.RES / "data_scaling.json"
 FRACS = [0.125, 0.25, 0.5, 1.0]
@@ -33,7 +34,7 @@ def main():
         xs = torch.tensor(np.concatenate([xtr[keep], Xc]), device=D.DEV)
         ws = torch.tensor(np.concatenate([wtr[keep], np.full(len(Xc), np.nan, np.float32)]), device=D.DEV)
         m = X.ContinuousWR(V).to(D.DEV)
-        m.load_state_dict(torch.load(X.P0, map_location=D.DEV)["sd"], strict=False)
+        m.load_state_dict(load_checkpoint(X.P0, map_location=D.DEV)["sd"], strict=False)
         ep = max(1, round(steps / int(np.ceil(len(xs) / BATCH))))
         opt = torch.optim.AdamW(m.parameters(), lr=2e-4, weight_decay=.01)
         sch = torch.optim.lr_scheduler.CosineAnnealingLR(opt, ep)

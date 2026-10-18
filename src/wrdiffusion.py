@@ -18,6 +18,7 @@ import argparse, json, random, sys
 from pathlib import Path
 import numpy as np, torch
 import torch.nn as nn, torch.nn.functional as F
+from checkpoints import load_checkpoint
 from corpus import parse_team, load_corpus, norm
 from encode import Vocab, Legality, NF, NSLOT
 import diffusion as D
@@ -133,7 +134,7 @@ def train(epochs=300, seed=0):
 
 def load_model():
     V, L, corpus, teams, wrs = build_vocab()
-    ck = torch.load(CKPT, map_location=DEV)
+    ck = load_checkpoint(CKPT, map_location=DEV)
     assert ck["itos"]["species"] == V.itos["species"], "vocab drift: rebuild"
     m = TeamDiffusionWR(V).to(DEV); m.load_state_dict(ck["sd"]); m.eval()
     return m, V, L, corpus, teams

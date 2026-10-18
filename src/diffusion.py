@@ -29,6 +29,7 @@ import numpy as np, torch
 import torch.nn as nn, torch.nn.functional as F
 from corpus import load_corpus, norm, STATS
 from encode import Vocab, Legality, team_fields, canon, FIELDS, NF, NSLOT
+from checkpoints import load_checkpoint
 
 DEV = "mps" if torch.backends.mps.is_available() else "cpu"
 COLS = NSLOT * NF
@@ -341,7 +342,7 @@ def sample_constrained(model, C, n, style="none", guidance=1.0, temp=1.0,
 
 def _load(V):
     m = TeamDiffusion(V).to(DEV)
-    m.load_state_dict(torch.load(CKPT, map_location=DEV)["sd"]); m.eval()
+    m.load_state_dict(load_checkpoint(CKPT, map_location=DEV)["sd"]); m.eval()
     return m
 
 def cli():

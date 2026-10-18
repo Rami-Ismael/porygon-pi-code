@@ -6,6 +6,7 @@ from encode import Vocab, Legality, NF, NSLOT
 from model import MaskedFieldModel
 from pilot import op_slotcopy, op_uniform, op_marginal, set_seed, COLS, decode_fields
 from refute_lens import resample, op_condcopy, StrictLegality
+from checkpoints import load_checkpoint
 from collections import defaultdict
 DEV = "mps" if torch.backends.mps.is_available() else "cpu"
 set_seed(0); rng = np.random.default_rng(0)
@@ -13,7 +14,7 @@ teams, _ = load_corpus(); teams = [t for t in teams if len(t) == 6]
 V = Vocab(teams); L = Legality(teams)
 X = np.stack([V.encode(t) for t in teams])
 idx = rng.permutation(len(X)); nte = int(len(X)*.15); Xte, Xtr = X[idx[:nte]], X[idx[nte:]]
-model = MaskedFieldModel(V).to(DEV); model.load_state_dict(torch.load("/tmp/vgc-pilot/refute_model.pt")); model.eval()
+model = MaskedFieldModel(V).to(DEV); model.load_state_dict(load_checkpoint("/tmp/vgc-pilot/refute_model.pt")); model.eval()
 slots_train = {tuple(r[s*NF:(s+1)*NF]) for r in Xtr for s in range(NSLOT)}
 print("distinct corpus slots (the entire reach of slotcopy):", len(slots_train))
 N = 256

@@ -25,6 +25,7 @@ from corpus import parse_team_text
 from encode import NF, NSLOT
 import hps_generate
 from hps_generate import Validator
+from checkpoints import load_checkpoint
 # /tmp Showdown lost node_modules files to tmp cleanup (2026-10-04); durable validator copy, same commit 913da36
 hps_generate.SHOWDOWN = Path.home() / ".local/share/vgc-pilot-runtime/validator-913da36"
 
@@ -127,7 +128,7 @@ def train():
     wtr = torch.tensor(np.concatenate([W[tr], Wc]), device=D.DEV)
     xte, wte = torch.tensor(X[te], device=D.DEV), torch.tensor(W[te], device=D.DEV)
     m = ContinuousWR(V).to(D.DEV)
-    miss, _ = m.load_state_dict(torch.load(P0, map_location=D.DEV)["sd"], strict=False)
+    miss, _ = m.load_state_dict(load_checkpoint(P0, map_location=D.DEV)["sd"], strict=False)
     print(f"{len(tr)} labelled + {len(Xc)} corpus (null) · held-out {len(te)} · dropped {drop} · "
           f"new params {miss}", flush=True)
     opt = torch.optim.AdamW(m.parameters(), lr=2e-4, weight_decay=.01)
@@ -147,7 +148,7 @@ def train():
 
 
 def load(V):
-    m = ContinuousWR(V).to(D.DEV); m.load_state_dict(torch.load(CKPT, map_location=D.DEV)["sd"]); m.eval()
+    m = ContinuousWR(V).to(D.DEV); m.load_state_dict(load_checkpoint(CKPT, map_location=D.DEV)["sd"]); m.eval()
     return m
 
 
