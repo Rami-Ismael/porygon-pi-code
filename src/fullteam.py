@@ -20,6 +20,8 @@ import argparse, json, random
 from collections import Counter, defaultdict
 from pathlib import Path
 import numpy as np, torch
+from beartype import beartype
+from jaxtyping import Int64, jaxtyped
 import torch.nn as nn, torch.nn.functional as F
 from corpus import load_corpus, norm, STATS, dex_entry, MEGA_STONE_OF
 from encode import Vocab as BaseVocab, Legality, canon, NSLOT, strict_ids
@@ -50,7 +52,8 @@ class FullVocab:
         j = col % NF2
         if j == 8: return "spread"
         return self.base.key(j)          # base indexes by field within a slot
-    def encode(self, team):
+    @jaxtyped(typechecker=beartype)
+    def encode(self, team) -> Int64[np.ndarray, "fields"]:
         out = []
         for s in canon(team):
             ms = sorted(s["moves"], key=norm) + [""] * (4 - len(s["moves"]))

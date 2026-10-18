@@ -13,6 +13,8 @@ Stat Point budget (a value that would push the slot over 66 is masked out).
 import argparse, json, random, sys
 from pathlib import Path
 import numpy as np, torch
+from beartype import beartype
+from jaxtyping import Int64, jaxtyped
 import torch.nn as nn, torch.nn.functional as F
 from checkpoints import load_checkpoint
 from corpus import parse_team, load_corpus, norm, STATS, dex_entry, MEGA_STONE_OF
@@ -36,7 +38,8 @@ class SpreadVocab:
     def key(self, col):
         j = col % NF2
         return "stat" if j >= 8 else self.base.key(j)
-    def encode(self, team):
+    @jaxtyped(typechecker=beartype)
+    def encode(self, team) -> Int64[np.ndarray, "fields"]:
         out = []
         for s in canon(team):
             ms = sorted(s["moves"], key=norm) + [""] * (4 - len(s["moves"]))
