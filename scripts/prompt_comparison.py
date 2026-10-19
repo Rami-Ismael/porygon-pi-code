@@ -12,7 +12,6 @@ import sys
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
 import results
-import llm_baseline as B
 
 PARENT=ROOT/'results/llm-baseline-meta-starters'
 DIFF=ROOT/'results/diffusion-baseline-meta-starters-v3'

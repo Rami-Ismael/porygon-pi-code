@@ -23,9 +23,9 @@ from types import SimpleNamespace
 import urllib.request
 
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import battles
 import llm_completion
 import results
-import llm_baseline as B
 import reasoning_experiment as E
 
 MODEL_NAMES = {llm_completion.MODEL: 'Ling 3.0 Flash', 'inception/mercury-2.5': 'Mercury 2.5'}
@@ -182,35 +182,34 @@ def run(args):
     return asyncio.run(generate(jobs, args.output, options, install_signals=True))
 
 
-def rebattle_baselines(output, backend, workers):
+def rebattle_baselines(output):
     """A comparison needs its baselines on the same engine: re-battle (in full) any
-    baseline study battled on the other one, under that study's own locks."""
+    baseline study the removed legacy engine battled, under that study's own locks."""
     import reasoning_battles as RB
     study, _ = E.load_runs(output)
     for b in study['baselines']:
         path = Path(b['path'])
         _, runs = E.load_runs(path)
-        if all(B.recorded_backend(folder) in (None, backend) for _, folder, _ in runs):
+        if all(battles.recorded_backend(folder) in (None, 'fast') for _, folder, _ in runs):
             continue
-        print(f"re-battling baseline {b['name']} on {backend}", flush=True)
+        print(f"re-battling baseline {b['name']} on the fast evaluator", flush=True)
         with (path / '.parallel-battles.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            RB.score(path, workers, backend)
+            RB.score(path)
             with (path.parent / ('.' + path.name + '.reasoning.lock')).open('a') as generation_lock:
                 fcntl.flock(generation_lock, fcntl.LOCK_EX)
                 E.report(SimpleNamespace(output=path))
 
 
 def battle(args):
-    """Score legal teams with the parallel exact-panel scorer; fast unless legacy is
-    named, after bringing the baselines onto the same engine."""
+    """Score legal teams with the exact-panel scorer on the fast evaluator, after
+    bringing the baselines onto the same engine."""
     import reasoning_battles as RB
-    backend = B.resolve_backend(args.battle_backend)
     with (args.output / '.parallel-battles.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        rebattle_baselines(args.output, backend, args.workers)
+        rebattle_baselines(args.output)
         while True:
-            panels = RB.score(args.output, args.workers, backend)
+            panels = RB.score(args.output)
             state = dict(RB.progress(args.output), workers=args.workers, updated_at=time.time())
             state['stage'] = 'complete' if state['complete'] else 'waiting_for_generation'
             results.save(args.output / 'parallel-battles.json', state)
@@ -597,12 +596,9 @@ def main():
     p.add_argument('--max-concurrency', type=int, default=4)
     p.add_argument('--request-interval', type=float, default=1.0)
     p.add_argument('--max-attempts', type=int, default=6)
-    p.add_argument('--workers', type=int, default=6)
+    p.add_argument('--workers', type=int, default=6,
+                   help='battle: recorded in parallel-battles.json only; the fast evaluator runs its own six workers')
     p.add_argument('--watch', action='store_true', help='battle: keep scoring while generation runs')
-    p.add_argument('--battle-backend', choices=['legacy', 'fast'],
-                   help='battle: fast (default) = one persistent six-worker evaluator, a separate battle identity; '
-                        'legacy = --workers pair_shard processes. This study and its baselines are re-battled '
-                        'when their labels came from the other engine (old labels are archived)')
     p.add_argument('--win-margin', type=float, default=0.01)
     p.add_argument('--legality-margin', type=float, default=0.05)
     p.add_argument('--data', type=Path, default=ROOT.parent / 'blog/mask-lab/data.json')

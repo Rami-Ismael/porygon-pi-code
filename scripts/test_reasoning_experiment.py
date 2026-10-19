@@ -6,11 +6,11 @@ import unittest
 from unittest.mock import patch, Mock, AsyncMock
 
 import repo_paths  # puts src/ first on sys.path
+import battles
 import llm_completion
 import results
 import showdown_validator
 import team_masks
-import llm_baseline as B
 import reasoning_experiment as E
 
 
@@ -166,7 +166,7 @@ class ReasoningExperimentTests(unittest.TestCase):
         self.assertTrue(all(j.trial['id'] == 's0-item-1' for j in jobs))
         self.record(*runs[0][:2], valid=False)
         self.record(*runs[2][:2])
-        with patch.object(B, 'battle') as battle:
+        with patch.object(battles, 'battle') as battle:
             E.battle(self.args)
         self.assertEqual(battle.call_count, 1)
         self.assertEqual(battle.call_args.kwargs['candidates_override'][0][0], 'llm-s0-item-1')

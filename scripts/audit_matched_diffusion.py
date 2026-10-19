@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 import statistics
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import battles
 import results
 import team_masks
-import llm_baseline as B
 import lossdown as L
 import reasoning_experiment as E
 
@@ -34,7 +34,7 @@ for rep in range(3):
   assert lab['battles']==50 and sum(x[2] for x in lab['results'])==lab['wins']
   actual=collections.Counter()
   for x in lab['results']:actual[x[1]]+=sum(x[2:5])
-  assert actual==collections.Counter(B.schedule_for(m,t['start']))
+  assert actual==collections.Counter(battles.schedule_for(m,t['start']))
   labels[lab['cache_key']].append(lab)
   seconds.append(r['seconds'])
   rows.append(dict(trial=t['id'],replicate=rep,start=t['start'],legal=True,win_rate=lab['wins']/50))

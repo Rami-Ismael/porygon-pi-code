@@ -347,7 +347,7 @@ class ExperimentTests(unittest.TestCase):
     def rebattle_baseline_on_fast(self, wins):
         import reasoning_battles as RB
         _, runs = E.load_runs(self.baseline)
-        RB.study_backend(self.baseline, runs, 'fast')
+        RB.archive_legacy_study(self.baseline, runs)
         for entry, folder, m in runs:
             results.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7, 'backend': 'fast'})
             for t in m['trials']:

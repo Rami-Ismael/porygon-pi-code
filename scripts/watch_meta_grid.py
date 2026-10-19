@@ -7,7 +7,6 @@ import sys
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
 import results
-import llm_baseline as B
 from meta_starter_grid import BASE,DIFF,selection
 
 

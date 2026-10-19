@@ -7,10 +7,10 @@ import json
 from pathlib import Path
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import battles
 import results
 import showdown_validator
 import team_masks
-import llm_baseline as B
 
 MEMBERS = ["F1_final_medium_noheldout", "G2_family_matrix_noprtrain_noheldout"]
 
@@ -195,7 +195,7 @@ def main():
             for path in sorted((args.output/'completions').glob('*.json')):
                 row=json.loads(path.read_text())
                 if row['valid']: candidates.append(('diffusion-'+row['trial'],row['team']))
-            B.battle(args,candidates_override=candidates)
+            battles.battle(args,candidates_override=candidates)
         else: globals()[args.command](args)
 
 

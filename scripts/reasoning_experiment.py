@@ -14,9 +14,9 @@ from types import SimpleNamespace
 import urllib.request
 
 import repo_paths  # puts src/ first on sys.path
+import battles
 import llm_completion
 import results
-import llm_baseline as B
 
 
 def read(path):
@@ -152,7 +152,7 @@ def battle(args):
                 candidates.append(('llm-' + t['id'], row['team']))
         if candidates:
             # Reuses the existing exact-panel cache, validator and BC policy.
-            B.battle(SimpleNamespace(output=folder), candidates_override=candidates)
+            battles.battle(SimpleNamespace(output=folder), candidates_override=candidates)
     report(args)
 
 

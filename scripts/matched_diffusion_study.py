@@ -1,21 +1,18 @@
 """Frozen 20-starter F1/G2 v3 system comparison; no API calls or reranking."""
 import collections
-import concurrent.futures
 import copy
 import fcntl
 import hashlib
 import json
-import multiprocessing
 from pathlib import Path
 import time
 from types import SimpleNamespace
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import battles
 import results
 import showdown_validator
 import team_masks
-import llm_baseline as B
 import diffusion_baseline_v3 as D
-import reasoning_battles as RB
 import reasoning_experiment as E
 
 OUT=ROOT/'results/diffusion-matched-20261013'
@@ -82,23 +79,13 @@ def run():
                 row=json.loads((OUT/f'r{rep}/completions'/(t['id']+'.json')).read_text())
                 if not row['valid']:continue
                 assert team_masks.masked(row['team'],t['paths'])==team_masks.masked(m['starts'][t['start']],t['paths'])
-                key=results.digest(dict(team=db.canonical_paste(showdown_validator.paste(row['team'],h)),schedule=B.schedule_for(m,t['start'])))
+                key=results.digest(dict(team=db.canonical_paste(showdown_validator.paste(row['team'],h)),schedule=battles.schedule_for(m,t['start'])))
                 g=groups.setdefault(key,dict(key=key,team=row['team'],start=t['start'],destinations=[]))
                 g['destinations'].append(str(OUT/f'r{rep}/labels'/('diffusion-'+t['id']+'.json')))
         pending=[g for g in groups.values() if any(not Path(x).exists() for x in g['destinations'])]
-        con=db.connect();validator=h.Validator()
-        try:
-            for g in pending:
-                tid=db.add_team(con,showdown_validator.paste(g['team'],h),'matched-diffusion',validator)[0];db.paste_file(con,tid)
-            for opponent in m['opponents']:db.paste_file(con,opponent['team_id'])
-        finally:validator.close();con.close()
-        snapshot('scoring')
-        buckets=[[] for _ in range(4)]
-        for g in pending:buckets[int(g['key'],16)%4].append(g)
-        for i in range(4):results.save(OUT/f'battle-workers/{i}/battle-config.json',config)
-        with concurrent.futures.ProcessPoolExecutor(max_workers=4,mp_context=multiprocessing.get_context('spawn')) as pool:
-            jobs=[pool.submit(RB.worker,str(OUT),i,m,b) for i,b in enumerate(buckets) if b]
-            for job in concurrent.futures.as_completed(jobs):job.result();snapshot('scoring')
+        # The panels must match the source study's battle config, which is the legacy engine's.
+        if pending:raise RuntimeError(f'{len(pending)} panels unscored: this study battles on the legacy engine '
+                                      '(pair_shard), removed on 2026-10-19; re-run its battles from a commit before then')
         assert all(hashlib.sha256(Path(f).read_bytes()).hexdigest()==v for f,v in json.loads(audit.read_text())['before'].items())
         assert snapshot('complete')['complete']
 

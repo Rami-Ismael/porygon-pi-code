@@ -11,7 +11,9 @@ import sys
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
 import results
-import llm_baseline as B
+
+# sha256 of the behaviour-cloning policy checkpoint (bc_100.zip) both sides play.
+BC_SHA256 = "57f5edcab415cf6ccc1b6231923c8b66d3b1b7249b6b2562b97531471e4ca60b"
 
 
 def restore_runtime():
@@ -33,10 +35,10 @@ def restore_runtime():
             alias.symlink_to(target,target_is_directory=target.is_dir())
     policy=Path('/tmp/bc_100.zip')
     durable=runtime/'files/bc_100.zip'
-    if hashlib.sha256(durable.read_bytes()).hexdigest()!=B.BC_SHA256:
+    if hashlib.sha256(durable.read_bytes()).hexdigest()!=BC_SHA256:
         raise RuntimeError('Durable BC checkpoint fingerprint mismatch')
     if not policy.exists(): shutil.copy2(durable,policy)
-    if hashlib.sha256(policy.read_bytes()).hexdigest()!=B.BC_SHA256:
+    if hashlib.sha256(policy.read_bytes()).hexdigest()!=BC_SHA256:
         raise RuntimeError('Runtime BC checkpoint fingerprint mismatch')
 
 

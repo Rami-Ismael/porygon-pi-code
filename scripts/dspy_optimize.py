@@ -22,10 +22,10 @@ import dspy
 
 import dspy_structure as S
 import repo_paths  # puts src/ first on sys.path
+import battles
 import llm_completion
 import results
 import showdown_validator
-import llm_baseline as B
 
 SPLITS = ('train', 'dev')
 
@@ -151,7 +151,7 @@ class Metric:
     def battle_panel(self, trial, team):
         label = f"llm-{trial['id']}-{results.digest(team)[:12]}"
         result = {}
-        B.battle(SimpleNamespace(output=self.output), candidates_override=[(label, team)],
+        battles.battle(SimpleNamespace(output=self.output), candidates_override=[(label, team)],
                  on_result=lambda _, r: result.update(r))
         return result['wins'] / result['battles']
 
