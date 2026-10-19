@@ -3,6 +3,7 @@ import hashlib
 from pathlib import Path
 import sys
 import time
+import numpy as np
 import torch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 import dibo_comparison_v2 as C
@@ -31,7 +32,7 @@ try:
     before=time.time()
     records=runtime.records(posterior.sample(128),prior,ensemble)
     runtime.cfg=dict(cfg,local_steps=1)
-    refined=runtime.refine(records,prior,ensemble)
+    refined=runtime.refine(records,prior,ensemble,rng=np.random.default_rng(cfg['seed']))
     assert all(b['log_target']>=a['log_target'] for a,b in zip(records,refined))
     print(f'128-candidate exact-acceptance refinement passed in {time.time()-before:.1f}s',flush=True)
 finally:

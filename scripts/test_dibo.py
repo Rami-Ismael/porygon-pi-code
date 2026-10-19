@@ -3,7 +3,7 @@ import itertools
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import numpy as np
 import torch
 from torch import nn
@@ -97,9 +97,9 @@ class DiBOTests(unittest.TestCase):
                          log_target=10. if int(row[0]) == 2 else 0.) for row in terminal.cpu()]
         runtime.records = score
         records = [dict(x=[1, 1], key='11', log_target=0.)]
-        with patch.object(DB.L, 'COLS', 2), patch.object(DB.L, 'DEV', 'cpu'), \
-             patch('numpy.random.randint', return_value=np.zeros(1, dtype=int)):
-            result = runtime.refine(records, self.prior, None, seen={'21'})
+        first_column = Mock(integers=Mock(return_value=np.zeros(1, dtype=int)))
+        with patch.object(DB.L, 'COLS', 2), patch.object(DB.L, 'DEV', 'cpu'):
+            result = runtime.refine(records, self.prior, None, seen={'21'}, rng=first_column)
         self.assertEqual(result[0]['key'], '11')
 
 

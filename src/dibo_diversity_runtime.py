@@ -146,7 +146,7 @@ class Runtime(DB.Runtime):
 
     def propose(self, prior, posterior, ensemble, generation, seen):
         seed = self.cfg['seed'] + generation * 1000 + 500
-        torch.manual_seed(seed); np.random.seed(seed)
+        torch.manual_seed(seed); rng = np.random.default_rng(seed)
         count = self.cfg['propose'] * (self.cfg['pool_multiplier'] if self.arm in ('big', 'dpp') else 1)
         banned_tokens = [self.V.stoi['species'][s] for s in self.banned if s in self.V.stoi['species']]
         sampler = DC.PathSampler(ProposalMask(posterior.model, DB.FD.SPECIES_COLS, banned_tokens, self.pins),
@@ -174,7 +174,7 @@ class Runtime(DB.Runtime):
         if len(records) != count:
             raise RuntimeError(f'{self.arm}: filled {len(records)}/{count} proposals in {tried} draws; no budget silently reduced')
         pre_refine = list(records)
-        records = self.refine(records, prior, ensemble, seen)
+        records = self.refine(records, prior, ensemble, seen, rng=rng)
         # Refinement can merge grids/compositions. Fall back to original legal
         # proposals to fill quotas; never relax taboo, pinning or peel constraints.
         fallback = pre_refine if self.arm in ('taboo', 'peel', 'island') else []
