@@ -27,6 +27,10 @@ def src_first():
         m = sys.modules.get(name)
         if m is not None and Path(getattr(m, "__file__", "") or "").resolve().parent != SRC:
             del sys.modules[name]
+    # H may be the laptop's heldout, dropped just above; the modules under test now raise this tree's
+    # HeldoutLeak, so assertRaises(H.HeldoutLeak) must name that class.
+    global H
+    import heldout as H
 
 def fake_runner(con, jobs, seed=None):
     out = []
