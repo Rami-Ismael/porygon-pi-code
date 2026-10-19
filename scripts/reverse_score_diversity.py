@@ -304,8 +304,8 @@ def write_report(path, data):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", type=Path, default=ROOT / "results/temperature_p0.pt")
-    parser.add_argument("--checkpoint-metadata", type=Path, default=ROOT / "results/temperature_p0.training.json")
+    parser.add_argument("--checkpoint", type=Path, default=ROOT / "results/temperature_p0_noheldout.pt")
+    parser.add_argument("--checkpoint-metadata", type=Path, default=ROOT / "results/temperature_p0_noheldout.training.json")
     parser.add_argument("--labels", type=Path, default=ROOT / "results/activesearch.json")
     parser.add_argument("--node", type=Path, default=Path('/Users/ramiismael/.nvm/versions/node/v22.22.0/bin/node'))
     parser.add_argument("--output", type=Path, default=ROOT / "results/reverse_score_diversity.json")

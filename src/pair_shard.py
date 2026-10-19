@@ -18,7 +18,7 @@ from poke_env.ps_client import ServerConfiguration, AccountConfiguration
 from stable_baselines3 import PPO
 from vgc_bench.src.policy_player import BatchPolicyPlayer
 from vgc_bench.src.utils import format_map
-from shard import ScheduledTeamBuilder
+from shard import ScheduledTeamBuilder, finish_or_disconnect
 from slot_order import ShuffledTeamBuilder
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
@@ -37,7 +37,8 @@ async def run_job(pol, job, conc, port, seed):
     srv = ServerConfiguration(f"ws://localhost:{port}/showdown/websocket",
                               "https://play.pokemonshowdown.com/action.php?")
     kw = dict(server_configuration=srv, battle_format=format_map["mb"], log_level=40,
-              max_concurrent_battles=conc, accept_open_team_sheet=True, open_timeout=None)
+              max_concurrent_battles=conc, accept_open_team_sheet=True, open_timeout=None,
+              ping_timeout=None)
     tag = os.urandom(4).hex()
     a = BatchPolicyPlayer(policy=pol, account_configuration=AccountConfiguration(f"r{tag}", None),
                           team=ShuffledTeamBuilder(1, None, "mb", custom_team_paths=[Path(job["row_file"])],
@@ -47,7 +48,11 @@ async def run_job(pol, job, conc, port, seed):
                           team=ScheduledTeamBuilder(job["schedule"], 1, None, "mb",
                                                     custom_team_paths=[Path(c) for c in cols],
                                                     order_seed=None if seed is None else seed + 1), **kw)
-    await a.battle_against(b, n_battles=len(job["schedule"]))
+    # Local inference can delay the event loop beyond the default 20-second ping
+    # deadline. Keep pings, but don't destroy live battles on that deadline.
+    # A real disconnect must still end the job: poke-env's listener swallows its
+    # exception while battle_against remains blocked on its unfinished queue.
+    connection_error = await finish_or_disconnect(a, b, len(job['schedule']))
     by_col, unattributed, finished = defaultdict(lambda: [0, 0, 0]), 0, 0
     for x in a.battles.values():
         if not x.finished: continue
@@ -63,11 +68,11 @@ async def run_job(pol, job, conc, port, seed):
         if x.won is True: t[0] += 1
         elif x.won is False: t[1] += 1
         else: t[2] += 1
-    for p in (a, b):
-        try: await p.ps_client.stop_listening()
-        except Exception: pass
-    return {"row": job["row"], "by_col": dict(by_col), "unattributed": unattributed, "finished": finished,
-            "scheduled": len(job["schedule"])}
+    result = {"row": job["row"], "by_col": dict(by_col), "unattributed": unattributed, "finished": finished,
+              "scheduled": len(job["schedule"])}
+    if connection_error:
+        result['connection_error'] = connection_error
+    return result
 
 def main():
     spec = json.load(open(sys.argv[1])); out = sys.argv[2]
@@ -76,6 +81,8 @@ def main():
     for job in spec["jobs"]:
         res.append(asyncio.run(run_job(pol, job, spec["conc"], spec["port"], spec.get("seed"))))
         json.dump(res, open(out, "w"))
+        if res[-1]['finished'] != res[-1]['scheduled'] or res[-1].get('connection_error'):
+            return  # Let the parent's incomplete-batch guard stop the run.
     json.dump(res, open(out, "w"))
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+7eac54c23f45435015549ea1bfd12c16d4536fab74cedaebc9526524d157f9c7  ling-mb-prompt-comparison/manifest.json
+4aa5178625c696e1383bc561c2442cdc9b666b91dfed48bab028e7ff17eed395  llm-baseline-meta-starters/manifest.json
+e3ba9e10635e867384aa6289edcd73cecd340648370837e67ab0544c1ecd1fbe  llm-baseline-instant-pilot/manifest.json
+c52821921136e9d8cdadd63628c2e9be9fd47bb559582b1481620c2d0e4f2f10  llm-baseline-meta-starters/completions/s2-stats-1.json
+5bfde1247661a272b67a137e5ff1281fa5a94f8d3ac6eb724bc54a00e511e323  llm-baseline-meta-starters/completions/s3-stats-1.json
+d3426b2b77badc07472150760aaa05e8c987a27215928993ac11b485047647d7  llm-baseline-meta-starters/completions/s17-stats-1.json
+e7d8847159a6dfc9a407f94c29ab400f6a6ca11bf0340b90acff5328a74e717d  llm-baseline-meta-starters/completions/s21-stats-1.json
+923b33e8913169bb84ec2917e9dcd21a108f79a4bab80c77961b751e93e2f5b4  llm-baseline-meta-starters/completions/s22-stats-1.json
+9f1ec31c9be09c5893e501c9abb3969b3a3c52638e23420f97d538b8dd5a767c  llm-baseline-meta-starters/completions/s31-stats-1.json
+a12c3232b986ed7d33ebf10580c0e1c9860c7313ae0f555915cf3d54feae1520  llm-baseline-meta-starters/completions/s48-stats-1.json

@@ -56,7 +56,8 @@ def random_spread(rng):
 
 
 def start_teams(con):
-    top = set(MDB.set_members(con, "top50"))
+    import heldout as HO                       # ranks 51-100 are not start teams (7 of the first 50 were)
+    top = set(MDB.set_members(con, "top50")) | HO.team_ids(con)
     rows = con.execute("SELECT team_id, paste FROM team WHERE origin='vgcpastes' AND legal=1 ORDER BY team_id").fetchall()
     rows = [(t, p) for t, p in rows if t not in top and len(parse_team_text(p)) == 6]
     pick = random.Random(SEED).sample(rows, N_TEAMS)

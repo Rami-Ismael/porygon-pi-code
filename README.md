@@ -1,7 +1,48 @@
 # VGC team-generator pilot
 
+## DSPy structure experiment (October 14, 2026)
+
+Tests whether typed DSPy request and answer fields change masked-completion
+legality or win rate, against the finished Ling and Mercury baselines, then
+optimizes the structured program. Built and tested offline; the paid run is
+pending. See [the protocol and headroom results](docs/dspy-structure-experiment.md).
+
+## Current team search: discrete DiBO (October 12, 2026)
+
+The active search now uses [DiBO posterior inference](docs/dibo-v3.md), replacing
+the CEM elite-selection/retraining loop. A score-weighted diffusion prior and
+independent prediction ensemble define `p_prior(team) * exp(beta * UCB(team))`;
+relative trajectory balance trains a separate posterior sampler. Discrete local
+refinement and posterior-density filtering precede new battle evaluations.
+
+    .venv/bin/python src/search.py run --smoke
+    .venv/bin/python src/search.py run
+    .venv/bin/python src/search.py final
+    .venv/bin/python src/search.py report
+    .venv/bin/python scripts/test_dibo.py
+
+The existing `cem_v3.py run/final/report` commands also route to DiBO. Historical
+CEM results and helpers used by pinned comparison experiments remain archival;
+new runs use separate DiBO manifests and checkpoints. This is a categorical
+adaptation of the continuous paper, not a claim that its reported improvements
+have been reproduced on Pokémon. See the method mapping and runtime requirements
+in [the implementation guide](docs/dibo-v3.md).
+
+## Current M-B vocabulary and retraining (October 8, 2026)
+
+Use `scripts/retrain_regmb.py` for the regulation-complete F1/G2 pipeline and
+`src/regmb_model.py` for its inference loader. The pinned simulator supplies the
+vocabulary and compatibility tables; the corpus supplies training examples,
+not the set of allowed tokens. Checkpoints save token identities and the rules
+snapshot. See [the M-B retraining report](docs/regmb-vocabulary-retraining.md).
+
+The older experiments below retain their original corpus vocabularies and
+explicit checkpoints for reproducibility.
+
 Does a learned generator trained on the Champions VGC 2026 Reg Set M-B meta corpus
 propose better teams than cheap non-learned operators?
+
+*Superseded 2026-10-08: win rate is now measured, see [`docs/cem-v3-loop.md`](docs/cem-v3-loop.md). The paragraph below describes the original pilot.*
 
 Battle-free by construction. **Win rate is not measured** — this project has no
 battle policy yet, so the objective function `f` cannot be evaluated. What is
@@ -418,3 +459,10 @@ species in them), and the recorded results are identical either way.
 A rule keeping every meta team can still cut away the off-meta counter-team the search
 exists to find; r is a proxy for "did not destroy known-good structure", never for "kept
 the optimum". Nothing here tests that, and no battle-free score can.
+
+## Reasoning experiment
+
+Compare LLM reasoning off/on (or advertised effort levels) on matched frozen
+team-completion tasks, with legality, paired battle performance, reasoning-token
+usage and cost reports. See [the experiment guide](docs/reasoning-experiment.md)
+for preparation, generation, battle evaluation and resumable reports.

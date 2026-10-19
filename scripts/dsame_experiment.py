@@ -21,13 +21,15 @@ import activesearch as A
 import gradguide as GG
 import matchup_db as MDB
 import diversity_metrics as DM
+sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
+import heldout as HO               # ranks 51-100: not a start team, not a child, not a parent
 from corpus import parse_team, parse_team_text, dex_entry, norm
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 OUT = REPO / "results" / "dsame_experiment.json"
 WORK = Path("/tmp/vgc-pilot/dsame")
-CKPT = REPO / "results" / "temperature_p0.pt"
+CKPT = REPO / "results" / "temperature_p0_noheldout.pt"
 SEEDS, GENS, BATTLE, BATTLES, PROPOSE = [11, 22, 33], 6, 128, 24, 512
 GRID, CHILDREN, ENSEMBLE, EPOCHS, TOPV, VERIFY_CELL = 12, 8000, 3, 150, 8, 16
 MODE, LAM = "gloss", 108.0
@@ -100,16 +102,22 @@ def mutation_module(seed):
 
 class Ctx:
     def __init__(self):
-        cf = A.load_corpus_files(); self.corpus = [t for _, t in cf]
-        self.V = A.Vocab(self.corpus); L = A.Legality(self.corpus); self.C = D.Constraints(self.V, L)
+        cf = A.load_corpus_files(); full = [t for _, t in cf]
+        self.V = A.Vocab(full); L = A.Legality(full); self.C = D.Constraints(self.V, L)   # token ids must not move
+        self.corpus = [t for _, t in HO.training_pairs(cf, self.V)]                       # ranks 51-100 out of the rows
         self.grid = np.stack([self.V.encode(t) for t in self.corpus])
-        self.look, self.spreads = A.decode_tables(self.corpus)
+        self.look, _ = A.decode_tables(full); _, self.spreads = A.decode_tables(self.corpus)
         self.opp = A.opponents()
         as1 = json.load(open(A.RESULTS))
-        self.start_files = list(as1["anchor"])
-        self.start = [parse_team(f) for f in as1["anchor"]] + [parse_team_text(p) for p in as1["gens"]["gen0"]["pastes"]]
-        self.start_y = [float(y) for y in as1["anchor"].values()] + [float(y) for y in as1["gens"]["gen0"]["y"]]
-        self.start_pastes = [MDB.canonical_paste(open(f).read()) for f in as1["anchor"]] + list(as1["gens"]["gen0"]["pastes"])
+        # start teams: anchors + generation 0, minus any held-out team; start_keep marks survivors in the original order
+        g0 = as1["gens"]["gen0"]
+        every = [parse_team(f) for f in as1["anchor"]] + [parse_team_text(p) for p in g0["pastes"]]
+        self.start_keep = [not HO.is_heldout_team(t) for t in every]     # surrogate labels: 48-field identity
+        pick = lambda xs: [x for x, k in zip(xs, self.start_keep) if k]
+        self.start_files = [f for f, k in zip(as1["anchor"], self.start_keep) if k]
+        self.start = pick(every)
+        self.start_y = pick([float(y) for y in as1["anchor"].values()] + [float(y) for y in g0["y"]])
+        self.start_pastes = pick([MDB.canonical_paste(open(f).read()) for f in as1["anchor"]] + list(g0["pastes"]))
         self.ref = DM.Reference(self.corpus, scope="corpus", format_id=MDB.FORMAT)
 
 def key(paste): return MDB.canon_hash(MDB.canonical_paste(paste))
@@ -140,7 +148,7 @@ def gen_baseline(ctx, lab_t, lab_y, seed, g, val, outdir):
                                                           PROPOSE, outdir / "proposals", 1000 * seed + g)
     t_prop = time.perf_counter() - t0
     mu = F.mat(teams) @ wv
-    sel = [int(i) for i in np.argsort(-mu)[:BATTLE]]
+    sel = [int(i) for i in np.argsort(-mu) if not HO.is_heldout_text(pastes[int(i)])][:BATTLE]
     return [pastes[i] for i in sel], dict(ridge_seconds=t_fit, resteer_seconds=t_ft, proposal_seconds=t_prop,
                                           validity=validity, proposals=len(teams))
 
@@ -166,7 +174,7 @@ def gen_dsame(ctx, lab_t, lab_y, lab_turn, seen, edges, seed, g, val, mut):
             op = rng.choice([o for o in mut["COND"] if o[0] in "ABCDEF"])   # pre-registered operators A-F only
             if mut["COND"][op](child): continue
             txt = mut["team_to_text"](child)
-            if val(txt) is None: batch.append(parse_team_text(txt))
+            if val(txt) is None and not HO.is_heldout_text(txt): batch.append(parse_team_text(txt))
         made += len(batch)
         if not batch: continue
         bw, bt = deep.predict(F.mat(batch))
@@ -250,7 +258,9 @@ def stage_run(ctx, out, smoke=False):
     val = Validator()
     edges = out["pilot"]["edges"] if out.get("pilot") else {"ratio": np.linspace(-0.6, 0.4, GRID + 1)[1:-1].tolist(),
                                                              "turns": np.linspace(4, 14, GRID + 1)[1:-1].tolist()}
-    start_turn = [t if t is not None else np.nan for t in (out["pilot"]["turns"] if out.get("pilot") else [None] * len(ctx.start))]
+    pt = out["pilot"]["turns"] if out.get("pilot") else [None] * len(ctx.start_keep)
+    if len(pt) == len(ctx.start_keep): pt = [t for t, k in zip(pt, ctx.start_keep) if k]   # pilot turns predate the filter
+    start_turn = [t if t is not None else np.nan for t in pt]
     global CHILDREN, BATTLE, PROPOSE, GENS
     seeds, arms = (SEEDS, ("baseline", "dsame")) if not smoke else ([7], ("dsame", "baseline"))
     if smoke: CHILDREN, BATTLE, PROPOSE, GENS = 400, 8, 24, 1

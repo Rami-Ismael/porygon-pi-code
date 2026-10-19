@@ -30,17 +30,20 @@ Techniques under test (papers in docs/loss-down.md):
     python lossdown.py table                    # every result so far
 (run with /tmp/vgc-pilot/.venv/bin/python)
 """
-import copy, json, math, sys, time
+import copy, json, math, os, sys, time
 from pathlib import Path
 import numpy as np
 import torch, torch.nn as nn, torch.nn.functional as F
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from encode import NF, NSLOT  # Pin local token schema before legacy modules alter sys.path.
 from checkpoints import load_checkpoint
 import asked_vs_got as X
 import diffusion as D
 import hpsdiffusion as H
 import activesearch as A
+import heldout as HO
 from corpus import norm, MEGA_STONE_OF, dex_entry
 from encode import NF, NSLOT
 
@@ -60,7 +63,8 @@ class Tables:
     values consistent with the fields that are visible (0 = masked). Never excludes a value a
     legal team can hold -- check() verifies that on every team before it is used."""
     def __init__(self, V, corpus):
-        C = D.Constraints(V, A.Legality(corpus))
+        regulation = getattr(V, 'regulation', None)
+        C = None if regulation else D.Constraints(V, A.Legality(corpus))
         self.V = V
         sp, ab, it, mv = (V.itos[k] for k in ("species", "ability", "item", "move"))
         nsp, nab, nit, nmv = len(sp), len(ab), len(it), len(mv)
@@ -68,6 +72,12 @@ class Tables:
         IT = torch.ones(nsp, nit, dtype=torch.bool)
         self.EMV = V.stoi["move"].get(""); self.EIT = V.stoi["item"].get("")
         for si in range(1, nsp):
+            if regulation:
+                slot = regulation['slots'][sp[si]]
+                AB[si] = torch.tensor([v in slot['abilities'] for v in ab])
+                MV[si] = torch.tensor([v in slot['moves'] or v == '' for v in mv])
+                IT[si] = torch.tensor([v in slot['items'] for v in it])
+                continue
             AB[si] = C.ab_ok[si]; MV[si] = C.mv_ok[si]
             if self.EMV is not None: MV[si, self.EMV] = True
             e = dex_entry(sp[si]) or {}
@@ -79,9 +89,17 @@ class Tables:
                     # own stone; a base forme takes a stone whose mega changes from it
                     IT[si, vi] = (st == own) if mega else MEGA_STONE_OF[st] in (C.base_of[si], sp[si])
         AB[0] = MV[0] = IT[0] = False
-        bases = sorted({C.base_of[si] for si in range(1, nsp)})
-        BASE = torch.tensor([0] + [1 + bases.index(C.base_of[si]) for si in range(1, nsp)])
+        base_of = {si:regulation['slots'][sp[si]]['base'] if regulation else C.base_of[si] for si in range(1,nsp)}
+        bases = sorted(set(base_of.values()))
+        BASE = torch.tensor([0] + [1 + bases.index(base_of[si]) for si in range(1, nsp)])
         self.AB, self.MV, self.IT, self.BASE = (t.to(DEV) for t in (AB, MV, IT, BASE))
+        self.ABIT = None
+        if regulation:
+            joint = torch.zeros(nsp,nit,nab,dtype=torch.bool)
+            for si in range(1,nsp):
+                for ability,items in regulation['slots'][sp[si]]['abilityItems'].items():
+                    for item in items: joint[si,V.stoi['item'][item],V.stoi['ability'][ability]]=True
+            self.ABIT = joint.to(DEV)
         self.nbase = len(bases) + 1
         self.sizes = dict(species=nsp, ability=nab, item=nit, move=nmv, nature=V.sizes["nature"])
 
@@ -110,6 +128,10 @@ class Tables:
         if "compat" in rules or "stone" in rules:
             oit &= torch.where(vsp.unsqueeze(-1), self.IT[sp], True)
             osp &= torch.where(vit.unsqueeze(-1), self.IT.T[it], True)
+            if self.ABIT is not None:
+                oab &= torch.where((vsp&vit).unsqueeze(-1), self.ABIT[sp,it], True)
+                oit &= torch.where((vsp&vab).unsqueeze(-1), self.ABIT.permute(0,2,1)[sp,ab], True)
+                osp &= torch.where((vit&vab).unsqueeze(-1), self.ABIT.permute(1,2,0)[it,ab], True)
         if "order" in rules and self.EMV is not None:
             # moves are stored sorted (vocabulary order) with '' padding last
             idx = torch.arange(self.sizes["move"], device=xin.device).view(1, 1, -1); E = self.EMV
@@ -296,9 +318,16 @@ def evaluate(f, x, w, reps=16, seed=12345, sched=None, batch=500):
     return out, pt
 
 
-def load_data():
+def load_data(include_heldout=False):
+    """The 147k-team training array. Rows that are a held-out team (ranks 51-100, 48-field match)
+    are dropped from X, W, NB, T, S, M together; xte/wte/top are not row-aligned and stay."""
     d = np.load(DATA)
-    return {k: d[k] for k in d.files}
+    d = {k: d[k] for k in d.files}
+    if include_heldout: return d
+    keep = HO.row_mask(d["X"], X.setup()[1])
+    if keep.all(): return d
+    n = len(d["X"])
+    return {k: (v[keep] if k in ("X", "W", "NB", "T", "S", "M") and len(v) == n else v) for k, v in d.items()}
 
 
 FAM = ["real", "oldpool", "loops08", "temperature", "cemrev", "redund", "matrix", "fill", "hps"]
@@ -379,11 +408,14 @@ def apply_moveorder(d, V, tables):
 def train_run(name, cfg):
     torch.manual_seed(cfg["seed"])
     corpus, V, *_ = X.setup()
-    d = load_data()
+    d = load_data(include_heldout=True)       # the original row space: val and matrix holdout stay what they were
+    keep = HO.row_mask(d["X"], V)             # ranks 51-100 (48 fields): not a training row, not a validation row
     tr, val = splits(d)
+    val = val[keep[val]]
     if cfg["final"]: tr = np.arange(len(d["X"]))                     # fold val back in for the final model
     mhold = matrix_holdout(d) if cfg["mrow"] else np.array([], np.int64)
     tr = np.setdiff1d(tr, mhold)
+    tr = tr[keep[tr]]
     keep_src = [["model", "real", "fill", "hps"].index(s) for s in cfg["sources"].split(",")]
     tr = tr[np.isin(d["T"][tr], keep_src)]
     TAG = tag_of(d["S"])
@@ -408,6 +440,10 @@ def train_run(name, cfg):
     xtr = torch.as_tensor(d["X"][tr], device=DEV)
     wtr = torch.as_tensor(cond_matrix(d, tr) if cfg["mrow"] else d["W"][tr], device=DEV)
     ttr = torch.as_tensor(TAG[tr], device=DEV)
+    famw = None
+    if cfg["fambal"]:                                                 # weight = 1 / rows in the row's family: equal mass per family
+        cnt = np.bincount(TAG[tr], minlength=NTAG); famw = torch.as_tensor(1.0 / cnt[TAG[tr]], dtype=torch.float32, device=DEV)
+        print("family balance: " + ", ".join(f"tag{t} {cnt[t]} rows" for t in range(NTAG) if cnt[t]), flush=True)
     net = Net(V, d=cfg["d"], nhead=cfg["nhead"], nlayer=cfg["nlayer"], dropout=cfg["dropout"],
               time_cond=bool(cfg["time_cond"]), ntag=NTAG if cfg["tags"] else 0, prime=cfg["prime"],
               mrow=d["M"].shape[1] if cfg["mrow"] else 0).to(DEV)
@@ -441,10 +477,6 @@ def train_run(name, cfg):
                     for pe, p in zip(ema.parameters(), net.parameters()): pe.lerp_(p, 1 - dec)
             run += float(loss.detach())
         net.eval()
-    famw = None
-    if cfg["fambal"]:                                                 # weight = 1 / rows in the row's family: equal mass per family
-        cnt = np.bincount(TAG[tr], minlength=NTAG); famw = torch.as_tensor(1.0 / cnt[TAG[tr]], dtype=torch.float32, device=DEV)
-        print("family balance: " + ", ".join(f"tag{t} {cnt[t]} rows" for t in range(NTAG) if cnt[t]), flush=True)
         m = ema if ema is not None else net
         vx, vw = d["X"][val], (cond_matrix(d, val) if cfg["mrow"] else d["W"][val])
         if digits is not None:
@@ -732,7 +764,23 @@ def exact(names):
 
 # ---------------------------------------------------------------- ensembles of saved runs
 def load_net(name, V):
+    """Load a lossdown checkpoint. Everything trained before ranks 51-100 were held out was moved to
+    CK/_contaminated_heldout/ (2026-10-14); a name that lives there, or any checkpoint without 'noheldout'
+    in its name, is refused with HeldoutLeak. Re-scoring a historical benchmark means moving the file back
+    AND setting ALLOW_CONTAMINATED_CHECKPOINTS=1: never for generating or searching. Only "1" opens it;
+    "0", "false" or any other value keeps it closed."""
+    quarantined = (CK / "_contaminated_heldout" / f"{name}.pt").exists()
+    allowed = os.environ.get("ALLOW_CONTAMINATED_CHECKPOINTS") == "1"
+    if (quarantined or ("noheldout" not in name and (CK / f"{name}.pt").exists())) and not allowed:
+        raise HO.HeldoutLeak(f"checkpoint {name!r} was trained with ranks 51-100 in its data; use the "
+                             f"'_noheldout' retrain (see docs/heldout-51-100.md)")
     ck = load_checkpoint(CK / f"{name}.pt", map_location=DEV)
+    if ck.get('vocabulary') is not None and ck['vocabulary'] != V.itos:
+        raise ValueError('checkpoint token identities differ from supplied vocabulary')
+    if ck.get('regulation') is not None and ck['regulation'] != getattr(V, 'regulation', None):
+        raise ValueError('checkpoint regulation snapshot differs from supplied legality tables')
+    if getattr(V, 'regulation', None) is not None and ck.get('vocabulary') is None:
+        raise ValueError('legacy checkpoint requires explicit token-identity migration')
     cfg = dict(DEFAULT); cfg.update(ck["cfg"])
     net = Net(V, d=cfg["d"], nhead=cfg["nhead"], nlayer=cfg["nlayer"], dropout=cfg["dropout"],
               time_cond=bool(cfg["time_cond"]), ntag=NTAG if cfg["tags"] else 0, prime=cfg["prime"],

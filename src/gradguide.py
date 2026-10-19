@@ -76,6 +76,8 @@ from encode import NF, NSLOT
 import diffusion as D
 import hpsdiffusion as H
 import activesearch as A
+sys.path.append(str(Path(__file__).resolve().parent))
+import heldout as HO
 from hps_generate import Validator
 
 ROOT = Path("/tmp/vgc-pilot/gradguide")
@@ -95,24 +97,25 @@ SPECIES_COLS = [c for c in range(D.COLS) if c % NF == 0]
 
 # ---------------------------------------------------------------- labels -> f
 def all_labels():
-    """(team, win_rate) for everything this repo ever battled at 24x vs top-50."""
+    """(team, win_rate) for everything this repo ever battled at 24x vs top-50,
+    except teams of ranks 51-100 (docs/heldout-51-100.md)."""
     teams, ys, srcs = [], [], []
+    twin = HO.is_heldout_team                    # 48-field identity
+    def add(t, y, s, held):
+        if not (held or twin(t)): teams.append(t); ys.append(y); srcs.append(s)
     r = json.load(open(AS1))
     for f, y in r["anchor"].items():
-        teams.append(parse_team(f)); ys.append(float(y)); srcs.append("as1_anchor")
+        add(parse_team(f), float(y), "as1_anchor", False)
     for tag, g in r["gens"].items():
         for p, y in zip(g["pastes"], g["y"]):
-            teams.append(parse_team_text(p)); ys.append(float(y)); srcs.append("as1")
+            add(parse_team_text(p), float(y), "as1", False)
     try:
         r2 = json.load(open(AS2))
         for f, y in (r2.get("anchor") or {}).items():
-            teams.append(parse_team(f))
-            ys.append(float(y["win_rate"] if isinstance(y, dict) else y))
-            srcs.append("as2_anchor")
+            add(parse_team(f), float(y["win_rate"] if isinstance(y, dict) else y), "as2_anchor", False)
         for tag, g in r2["gens"].items():
             for p, l in zip(g["pastes"], g["lab"]):
-                teams.append(parse_team_text(p)); ys.append(float(l["win_rate"]))
-                srcs.append("as2")
+                add(parse_team_text(p), float(l["win_rate"]), "as2", False)
     except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
         print(f"  activesearch2 labels skipped ({e})", flush=True)
     return teams, ys, srcs

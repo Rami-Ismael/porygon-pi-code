@@ -16,6 +16,7 @@ import numpy as np
 import torch, torch.nn as nn, torch.nn.functional as F
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import activesearch as A
 import diffusion as D
 import hpsdiffusion as H
@@ -23,6 +24,7 @@ import matchup_db as MDB
 import pool
 from corpus import parse_team_text
 from encode import NF, NSLOT
+import heldout as HO               # ranks 51-100: excluded from training rows (docs/heldout-51-100.md)
 import hps_generate
 from hps_generate import Validator
 from checkpoints import load_checkpoint
@@ -32,9 +34,9 @@ hps_generate.SHOWDOWN = Path.home() / ".local/share/vgc-pilot-runtime/validator-
 REPO = Path("/Users/ramiismael/Documents/code/vgc-team-generator-pilot")
 RES = REPO / "results"
 OUT = RES / "asked_vs_got.json"
-DATA = RES / "asked_vs_got_data.json"
-CKPT = RES / "asked_vs_got.pt"
-P0 = RES / "temperature_p0.pt"
+DATA = RES / "asked_vs_got_data_noheldout.json"
+CKPT = RES / "asked_vs_got_noheldout.pt"
+P0 = RES / "temperature_p0_noheldout.pt"
 WORK = Path("/tmp/vgc-pilot/askedgot")
 SOURCES = ["activesearch", "dsame_experiment", "entropyloop", "gradguide", "gradloop"]
 ASKED = [round(0.1 * i, 1) for i in range(10)]
@@ -54,6 +56,7 @@ def _walk(o, acc):
 def gather():
     pooled = {}                                   # canon hash -> [paste, wins, battles]
     def add(p, y, n):
+        if HO.is_heldout_text(p): return          # ranks 51-100 are not training labels
         c = MDB.canonical_paste(p); h = MDB.canon_hash(c)
         e = pooled.setdefault(h, [p, 0.0, 0])
         e[1] += y * n; e[2] += n
@@ -104,9 +107,15 @@ class ContinuousWR(H.TeamDiffusionHPS):
 
 
 def setup():
-    cf = A.load_corpus_files(); corpus = [t for _, t in cf]
-    V = A.Vocab(corpus); C = D.Constraints(V, A.Legality(corpus))
-    look, spreads = A.decode_tables(corpus)
+    """(training corpus, vocabulary, constraints, display names, spreads).
+
+    The vocabulary, rule tables and display names come from every corpus file: removing the held-out
+    teams shrinks them and would move every token id in every saved checkpoint. What is learned from
+    or sampled (rows, spread donors) is the training corpus, without ranks 51-100."""
+    cf = A.load_corpus_files(); full = [t for _, t in cf]
+    V = A.Vocab(full); C = D.Constraints(V, A.Legality(full))
+    corpus = [t for _, t in HO.training_pairs(cf)]
+    look, _ = A.decode_tables(full); _, spreads = A.decode_tables(corpus)
     return corpus, V, C, look, spreads
 
 
@@ -117,7 +126,7 @@ def train():
     X, W, drop = [], [], 0
     for r in rows:
         t = parse_team_text(r["paste"])
-        if len(t) != 6: drop += 1; continue
+        if len(t) != 6 or HO.is_heldout_team(t): drop += 1; continue
         try: e = V.encode(t)
         except ValueError: drop += 1; continue     # a field outside the corpus vocabulary
         X.append(e); W.append(r["y"])
