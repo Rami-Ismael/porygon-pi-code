@@ -7,6 +7,8 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+import repo_paths  # puts src/ first on sys.path
+
 ROOT=Path(__file__).resolve().parents[1]
 SNAPSHOTS=ROOT/'prompts'
 ORIGINAL='mb-original-v1'
@@ -60,11 +62,11 @@ def add_regulation(messages):
 
 
 def messages(version,manifest,trial):
-    import llm_baseline as B
+    import llm_completion
     if version not in VERSIONS:raise ValueError(f'unknown prompt version {version}')
     m=dict(manifest,prompt_version=version)
     if version==ORIGINAL:del m['prompt_version']
-    return B.prompt(m,trial)
+    return llm_completion.prompt(m,trial)
 
 
 def system_text(version,manifest=None):

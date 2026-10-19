@@ -178,7 +178,7 @@ Without the answer shape, Luna generalized the original instruction "evs keys ar
 
 ## Files and checks
 
-`code/scripts/dspy_structure.py`, `dspy_structure_experiment.py`, `dspy_optimize.py`, and two hooks in `llm_baseline.py` (`completion_payload` and `validate_record` use DSPy only when a manifest declares `structure`). The baseline request bytes are unchanged.
+`code/scripts/dspy_structure.py`, `dspy_structure_experiment.py`, `dspy_optimize.py`, and two hooks in `code/src/llm_completion.py` (`completion_payload` and `validate_record` use DSPy only when a manifest declares `structure`). The baseline request bytes are unchanged.
 
 ```sh
 python -m unittest discover -s code/scripts -p 'test_dspy_*.py'   # 17 tests; no API key or simulator

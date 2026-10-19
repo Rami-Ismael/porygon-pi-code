@@ -9,7 +9,11 @@ import shutil
 import subprocess
 import sys
 import time
-import llm_baseline as B
+from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
+
+# sha256 of the behaviour-cloning policy checkpoint (bc_100.zip) both sides play.
+BC_SHA256 = "57f5edcab415cf6ccc1b6231923c8b66d3b1b7249b6b2562b97531471e4ca60b"
 
 
 def restore_runtime():
@@ -19,7 +23,7 @@ def restore_runtime():
     scratch.mkdir(parents=True,exist_ok=True)
     bench=runtime/'unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2'
     aliases={scratch/'.venv':runtime/'venv',scratch/'data':runtime/'data',
-             scratch/'src':B.ROOT/'src',scratch/'learnset_true.json':runtime/'files/learnset_true.json',
+             scratch/'src':ROOT/'src',scratch/'learnset_true.json':runtime/'files/learnset_true.json',
              scratch/'top50_evs.json':runtime/'files/top50_evs.json',
              scratch/'vgc-bench/teams':bench/'teams',scratch/'vgc-bench/vgc_bench':bench/'vgc_bench',
              scratch/'vgc-bench/pokemon-showdown':runtime/'validator-913da36'}
@@ -31,25 +35,25 @@ def restore_runtime():
             alias.symlink_to(target,target_is_directory=target.is_dir())
     policy=Path('/tmp/bc_100.zip')
     durable=runtime/'files/bc_100.zip'
-    if hashlib.sha256(durable.read_bytes()).hexdigest()!=B.BC_SHA256:
+    if hashlib.sha256(durable.read_bytes()).hexdigest()!=BC_SHA256:
         raise RuntimeError('Durable BC checkpoint fingerprint mismatch')
     if not policy.exists(): shutil.copy2(durable,policy)
-    if hashlib.sha256(policy.read_bytes()).hexdigest()!=B.BC_SHA256:
+    if hashlib.sha256(policy.read_bytes()).hexdigest()!=BC_SHA256:
         raise RuntimeError('Runtime BC checkpoint fingerprint mismatch')
 
 
 def main():
     restore_runtime()
-    output=B.ROOT/'results/llm-baseline-full-grid'
+    output=ROOT/'results/llm-baseline-full-grid'
     output.mkdir(parents=True,exist_ok=True)
     with (output/'.pipeline.lock').open('w') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         jobs=[('prepare',['dense_mask_grid.py','prepare']),
               ('ling',['llm_baseline.py','complete','--output',str(output)]),
-              ('diffusion',['diffusion_baseline.py','generate','--baseline',str(output),'--output',str(B.ROOT/'results/diffusion-baseline-full-grid'),'--members','F1_final_medium_noheldout_regmb_v2','G2_family_matrix_noprtrain_noheldout_regmb_v2']),
+              ('diffusion',['diffusion_baseline.py','generate','--baseline',str(output),'--output',str(ROOT/'results/diffusion-baseline-full-grid'),'--members','F1_final_medium_noheldout_regmb_v2','G2_family_matrix_noprtrain_noheldout_regmb_v2']),
               ('battles',['dense_grid_battles.py','--workers','6']),
               ('report',['dense_mask_grid.py','report']),
-              ('dashboard',[str(B.ROOT/'dashboard/build.py')])]
+              ('dashboard',[str(ROOT/'dashboard/build.py')])]
         for stage,command in jobs:
             if stage=='prepare' and (output/'manifest.json').exists(): continue
             if stage=='ling':
@@ -59,15 +63,15 @@ def main():
                 if uncertain: raise RuntimeError('Uncertain sent requests require reconciliation before retrying: '+', '.join(uncertain))
                 if missing and not os.environ.get('OPENROUTER_API_KEY'):
                     os.environ['OPENROUTER_API_KEY']=getpass.getpass('OpenRouter API key (not saved): ')
-            command[0]=str(B.ROOT/'scripts'/command[0]) if not command[0].startswith('/') else command[0]
-            B.save(output/'pipeline-progress.json',dict(stage=stage,status='running',updated_at=time.time()))
+            command[0]=str(ROOT/'scripts'/command[0]) if not command[0].startswith('/') else command[0]
+            results.save(output/'pipeline-progress.json',dict(stage=stage,status='running',updated_at=time.time()))
             print('Stage:',stage,flush=True)
             with (output/'pipeline.log').open('a') as log:
                 result=subprocess.run([sys.executable,*command],stdout=log,stderr=subprocess.STDOUT)
             if result.returncode:
-                B.save(output/'pipeline-progress.json',dict(stage=stage,status='interrupted',returncode=result.returncode,updated_at=time.time()))
+                results.save(output/'pipeline-progress.json',dict(stage=stage,status='interrupted',returncode=result.returncode,updated_at=time.time()))
                 raise RuntimeError('Stage failed: '+stage+'; inspect '+str(output/'pipeline.log'))
-        B.save(output/'pipeline-progress.json',dict(stage='complete',status='complete',updated_at=time.time()))
+        results.save(output/'pipeline-progress.json',dict(stage='complete',status='complete',updated_at=time.time()))
         print('Full grid complete. Dashboard rebuilt.',flush=True)
 
 

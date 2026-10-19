@@ -10,10 +10,13 @@ import re
 import subprocess
 import sys
 from types import SimpleNamespace
-import llm_baseline as B
+from repo_paths import ROOT  # also puts src/ first on sys.path
+import battles
+import results
+import showdown_validator
 import prompt_versions as V
 
-OUT=B.ROOT/'results/prompt-regulation-test'
+OUT=ROOT/'results/prompt-regulation-test'
 ARMS=['mb-original-v1','mb-regulation-v3']
 MIN_STARTERS=6
 FAILURES=[('truncated','truncated'),('Expecting|Extra data|Unterminated|delimiter|Invalid','unparseable JSON'),
@@ -37,12 +40,12 @@ def prepare(args):
     for arm in ARMS:
         for replicate in range(args.replicates):
             m=copy.deepcopy(parent);m.pop('prompt_comparison',None)
-            m.update(prompt_version=arm,prompt_test=dict(parent_manifest_sha256=B.digest(parent),replicate=replicate,
+            m.update(prompt_version=arm,prompt_test=dict(parent_manifest_sha256=results.digest(parent),replicate=replicate,
                      system_sha256=V.system_sha256(arm,m),arms=ARMS,starters=sorted(starters)))
             if arm==V.ORIGINAL:del m['prompt_version']  # identical request bytes to the first run
             path=folder(arm,replicate)/'manifest.json'
             if path.exists():assert read(path)==m,f'{path} differs; use another --output'
-            else:B.save(path,m)
+            else:results.save(path,m)
     print(json.dumps(dict(prepared=str(OUT),arms=ARMS,replicates=args.replicates,tasks=len(parent['trials']),
                           starters=len(starters),calls=len(ARMS)*args.replicates*len(parent['trials']))))
 
@@ -55,43 +58,42 @@ def run(args):
     if todo and not os.environ.get('OPENROUTER_API_KEY'):
         os.environ['OPENROUTER_API_KEY']=getpass.getpass('OpenRouter key (not saved): ')
     # All arms run at the same time, so provider drift cannot favour one prompt.
-    jobs=[(f,subprocess.Popen([sys.executable,str(B.ROOT/'scripts/llm_baseline.py'),'complete','--output',str(f)],
+    jobs=[(f,subprocess.Popen([sys.executable,str(ROOT/'scripts/llm_baseline.py'),'complete','--output',str(f)],
                                stdout=(f/'generation.log').open('a'),stderr=subprocess.STDOUT)) for f in todo]
     failed=[str(f) for f,job in jobs if job.wait()]
     report(args)
     if failed:raise RuntimeError(f'generation stopped in {failed}; see generation.log, then rerun')
 
 
-def battle_worker(index,count,backend='fast'):
+def battle_worker(index,count):
     """Score the legal completions only; the comparison is between the two prompts."""
-    h,db=B.runtime();jobs=[]
+    h,db=showdown_validator.runtime();jobs=[]
     for f in folders():
         m=read(f/'manifest.json');tag=f.parent.name.split('-')[-1]+f.name  # v3r0: no hyphen, so the starter index still parses
         for t in m['trials']:
             r=read(f/'completions'/(t['id']+'.json'))
             if r and r['valid'] and not (f/'labels'/('llm-'+t['id']+'.json')).exists():jobs.append((tag+'-'+t['id'],r['team'],f/'labels'/('llm-'+t['id']+'.json')))
     # Identical teams always go to the same process, preventing cache races.
-    jobs=[j for j in jobs if int(B.digest(db.canonical_paste(B.paste(j[1],h))),16)%count==index]
-    out=OUT/'workers'/str(index);B.save(out/'manifest.json',m)
-    try:B.battle(SimpleNamespace(output=out,battle_backend=backend),candidates_override=[(label,team) for label,team,_ in jobs])
+    jobs=[j for j in jobs if int(results.digest(db.canonical_paste(showdown_validator.paste(j[1],h))),16)%count==index]
+    out=OUT/'workers'/str(index);results.save(out/'manifest.json',m)
+    try:battles.battle(SimpleNamespace(output=out),candidates_override=[(label,team) for label,team,_ in jobs])
     finally:
         for label,_,dest in jobs:
             done=read(out/'labels'/(label+'.json'))
             if done:
-                B.save(dest,done)
+                results.save(dest,done)
                 # Records the destination's engine, so a later run does not archive it again.
-                if not (dest.parent.parent/'battle-config.json').exists():B.save(dest.parent.parent/'battle-config.json',read(out/'battle-config.json'))
+                if not (dest.parent.parent/'battle-config.json').exists():results.save(dest.parent.parent/'battle-config.json',read(out/'battle-config.json'))
     return len(jobs)
 
 
 def battle(args):
-    if args.worker is not None:return print(battle_worker(args.worker,args.workers,args.battle_backend),'panels')
+    if args.worker is not None:return print(battle_worker(args.worker,args.workers),'panels')
     # The fast evaluator already runs six workers; one process feeds it every panel.
-    if args.battle_backend=='fast':args.workers=1
-    # Labels from the other engine are archived, so every arm is re-battled on one engine.
-    for f in folders():B.switch_engine(f,args.battle_backend)
-    jobs=[subprocess.Popen([sys.executable,__file__,'battle','--output',str(OUT),'--workers',str(args.workers),'--worker',str(i),
-                            '--battle-backend',args.battle_backend],
+    args.workers=1
+    # Labels from the removed legacy engine are archived, so every arm is re-battled on one engine.
+    for f in folders():battles.archive_legacy_labels(f)
+    jobs=[subprocess.Popen([sys.executable,__file__,'battle','--output',str(OUT),'--workers',str(args.workers),'--worker',str(i)],
                            stdout=(OUT/f'battles-{i}.log').open('a'),stderr=subprocess.STDOUT) for i in range(args.workers)]
     failed=[i for i,job in enumerate(jobs) if job.wait()]
     report(args)
@@ -169,16 +171,15 @@ def report(args):
             lines+=['','Mean win rate of every legal completion that was battled: '+'; '.join(f'`{arm}` {sum(v)/len(v):.3f} over {len(v)} teams' for arm,v in scored.items())+'.']
     lines+=['','Rejected responses by reason:','','| Reason | '+' | '.join(f'`{a}`' for a in ARMS)+' |','|---|---:|---:|']
     lines+=[f'| {name} | {why[old][name]} | {why[new][name]} |' for name in sorted(set(why[old])|set(why[new]),key=lambda n:-why[old][n]-why[new][n])]
-    B.save(OUT/'status.json',status);(OUT/'report.md').write_text('\n'.join(lines)+'\n')
+    results.save(OUT/'status.json',status);(OUT/'report.md').write_text('\n'.join(lines)+'\n')
     print('\n'.join(lines))
 
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',choices=['prepare','run','battle','report'])
-    p.add_argument('--parent',type=Path,default=B.ROOT/'results/ling-mb-prompt-comparison',help='folder holding the frozen 147-task manifest')
+    p.add_argument('--parent',type=Path,default=ROOT/'results/ling-mb-prompt-comparison',help='folder holding the frozen 147-task manifest')
     p.add_argument('--output',type=Path,default=OUT);p.add_argument('--replicates',type=int,default=2)
-    p.add_argument('--workers',type=int,default=1);p.add_argument('--worker',type=int)
-    p.add_argument('--battle-backend',choices=['legacy','fast'],default='fast',
-                   help='battle: fast = one process on the six-worker evaluator; legacy = --workers pair_shard processes')
+    p.add_argument('--workers',type=int,default=1,help='battle: ignored; the fast evaluator runs its own six workers, fed by one process')
+    p.add_argument('--worker',type=int)
     args=p.parse_args();OUT=args.output.resolve();OUT.mkdir(parents=True,exist_ok=True)
     globals()[args.command](args)

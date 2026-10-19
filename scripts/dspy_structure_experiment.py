@@ -22,10 +22,13 @@ import time
 from types import SimpleNamespace
 import urllib.request
 
-import llm_baseline as B
+from repo_paths import ROOT  # also puts src/ first on sys.path
+import battles
+import llm_completion
+import results
 import reasoning_experiment as E
 
-MODEL_NAMES = {B.MODEL: 'Ling 3.0 Flash', 'inception/mercury-2.5': 'Mercury 2.5'}
+MODEL_NAMES = {llm_completion.MODEL: 'Ling 3.0 Flash', 'inception/mercury-2.5': 'Mercury 2.5'}
 VARIANT_NAMES = {'chat': 'DSPy field-marker format', 'json': 'DSPy JSON-object format',
                  'resampled': 'Baseline JSON prompt, sampled again'}
 RESAMPLED = 'resampled'
@@ -56,7 +59,7 @@ def variant_name(variant, program=None, constraints=None):
 
 
 def payload_without_messages(manifest, trial):
-    payload = B.completion_payload(manifest, trial)
+    payload = llm_completion.completion_payload(manifest, trial)
     payload.pop('messages')
     return payload
 
@@ -94,13 +97,13 @@ def prepare(args):
         if status is None or not status.get('complete'):
             raise ValueError(f'baseline study is not complete: {folder}')
         study['baselines'].append(dict(path=str(folder), name=folder.name, model=baseline['model'],
-                                       arms=list(baseline['arms']), experiment_sha256=B.digest(baseline),
-                                       status_sha256=B.digest(status)))
+                                       arms=list(baseline['arms']), experiment_sha256=results.digest(baseline),
+                                       status_sha256=results.digest(status)))
         for entry, run_folder, m in runs:
             if design is None:
                 design = battle_design(m)
                 study['seed'] = m['seed']
-                study['opponents_sha256'] = B.digest(m['opponents'])
+                study['opponents_sha256'] = results.digest(m['opponents'])
             elif battle_design(m) != design:
                 raise ValueError('baseline studies use different starters, opponents or battle settings')
             for variant in variants:
@@ -112,7 +115,7 @@ def prepare(args):
                                                    baseline_manifest_sha256=entry['manifest_sha256'])
                 rerouted = m['model'] in overrides
                 if rerouted:
-                    original = B.completion_payload(m, m['trials'][0])['provider']
+                    original = llm_completion.completion_payload(m, m['trials'][0])['provider']
                     new['provider'] = dict(original, order=[overrides[m['model']]])
                     new['structure_experiment']['provider_override'] = dict(baseline=original, used=new['provider'])
                     study['provider_overrides'][m['model']] = dict(baseline=original, used=new['provider'])
@@ -126,24 +129,24 @@ def prepare(args):
                         raise ValueError('structured request changed a sampling or routing setting')
                     if variant == RESAMPLED:
                         if rerouted:
-                            if B.completion_payload(new, t)['messages'] != B.completion_payload(m, t)['messages']:
+                            if llm_completion.completion_payload(new, t)['messages'] != llm_completion.completion_payload(m, t)['messages']:
                                 raise ValueError('resampled baseline messages differ from the original')
-                        elif B.digest(B.completion_payload(new, t)) != entry['request_hashes'][t['id']]:
+                        elif results.digest(llm_completion.completion_payload(new, t)) != entry['request_hashes'][t['id']]:
                             raise ValueError('resampled baseline request differs from the original')
                     else:
                         S.check_information(new, t)
                 arm = f"{slug(m['model'])}-{entry['arm']}-{variant}"
                 study['arms'][arm] = dict(model=m['model'], reasoning=entry['arm'], variant=variant)
                 relative = f"{slug(m['model'])}/{entry['arm']}/{variant}/r{entry['replicate']}"
-                hashes = {t['id']: B.digest(B.completion_payload(new, t)) for t in new['trials']}
+                hashes = {t['id']: results.digest(llm_completion.completion_payload(new, t)) for t in new['trials']}
                 study['runs'].append(dict(path=relative, arm=arm, model=m['model'], reasoning=entry['arm'],
                                           variant=variant, replicate=entry['replicate'],
                                           baseline=folder.name, baseline_path=entry['path'],
-                                          manifest_sha256=B.digest(new), request_hashes=hashes))
-                B.save(args.output / relative / 'manifest.json', new)
-                B.save(args.output / relative / 'example-request.json', B.completion_payload(new, new['trials'][0]))
+                                          manifest_sha256=results.digest(new), request_hashes=hashes))
+                results.save(args.output / relative / 'manifest.json', new)
+                results.save(args.output / relative / 'example-request.json', llm_completion.completion_payload(new, new['trials'][0]))
     study['planned_calls'] = sum(len(r['request_hashes']) for r in study['runs'])
-    B.save(args.output / 'experiment.json', study)
+    results.save(args.output / 'experiment.json', study)
     print(json.dumps(dict(output=str(args.output), planned_calls=study['planned_calls'],
                           runs=len(study['runs']), variants=variants)))
 
@@ -165,7 +168,7 @@ def run(args):
                 raise ValueError(f'{model} does not advertise the requested effort levels')
             if capabilities.get('mandatory'):
                 raise ValueError(f'{model} requires reasoning and cannot supply an off arm')
-        B.save(args.output / 'reasoning-capabilities.json', {m: catalog[m].get('reasoning') for m in graded})
+        results.save(args.output / 'reasoning-capabilities.json', {m: catalog[m].get('reasoning') for m in graded})
     from openrouter_generation import Job, Options, generate
     # Interleave every run within each task to spread provider drift evenly.
     jobs = []
@@ -179,38 +182,37 @@ def run(args):
     return asyncio.run(generate(jobs, args.output, options, install_signals=True))
 
 
-def rebattle_baselines(output, backend, workers):
+def rebattle_baselines(output):
     """A comparison needs its baselines on the same engine: re-battle (in full) any
-    baseline study battled on the other one, under that study's own locks."""
+    baseline study the removed legacy engine battled, under that study's own locks."""
     import reasoning_battles as RB
     study, _ = E.load_runs(output)
     for b in study['baselines']:
         path = Path(b['path'])
         _, runs = E.load_runs(path)
-        if all(B.recorded_backend(folder) in (None, backend) for _, folder, _ in runs):
+        if all(battles.recorded_backend(folder) in (None, 'fast') for _, folder, _ in runs):
             continue
-        print(f"re-battling baseline {b['name']} on {backend}", flush=True)
+        print(f"re-battling baseline {b['name']} on the fast evaluator", flush=True)
         with (path / '.parallel-battles.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            RB.score(path, workers, backend)
+            RB.score(path)
             with (path.parent / ('.' + path.name + '.reasoning.lock')).open('a') as generation_lock:
                 fcntl.flock(generation_lock, fcntl.LOCK_EX)
                 E.report(SimpleNamespace(output=path))
 
 
 def battle(args):
-    """Score legal teams with the parallel exact-panel scorer; fast unless legacy is
-    named, after bringing the baselines onto the same engine."""
+    """Score legal teams with the exact-panel scorer on the fast evaluator, after
+    bringing the baselines onto the same engine."""
     import reasoning_battles as RB
-    backend = B.resolve_backend(args.battle_backend)
     with (args.output / '.parallel-battles.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        rebattle_baselines(args.output, backend, args.workers)
+        rebattle_baselines(args.output)
         while True:
-            panels = RB.score(args.output, args.workers, backend)
+            panels = RB.score(args.output)
             state = dict(RB.progress(args.output), workers=args.workers, updated_at=time.time())
             state['stage'] = 'complete' if state['complete'] else 'waiting_for_generation'
-            B.save(args.output / 'parallel-battles.json', state)
+            results.save(args.output / 'parallel-battles.json', state)
             print(json.dumps(dict(state, new_panels=panels)), flush=True)
             if state['complete'] or not args.watch:
                 break
@@ -289,11 +291,11 @@ def baseline_status(b):
     and differ from the current one only in win rates."""
     path = Path(b['path'])
     status = E.read(path / 'status.json')
-    if status is not None and B.digest(status) == b['status_sha256']:
+    if status is not None and results.digest(status) == b['status_sha256']:
         return status
     for archived in sorted(path.glob('archive-*-battles-*/status.json')):
         old = E.read(archived)
-        if status is not None and B.digest(old) == b['status_sha256'] and without_outcomes(old) == without_outcomes(status):
+        if status is not None and results.digest(old) == b['status_sha256'] and without_outcomes(old) == without_outcomes(status):
             return status
     raise ValueError(f"baseline status changed since prepare: {b['path']}")
 
@@ -446,7 +448,7 @@ def report(args):
                   constraints=study.get('constraints'),
                   margins=dict(legality=args.legality_margin, win_rate=args.win_margin),
                   cells=cells, pooled=pooled, rows=rows)
-    B.save(args.output / 'status.json', status)
+    results.save(args.output / 'status.json', status)
     (args.output / 'report.md').write_text(render(status))
     print(json.dumps(dict(report=str(args.output / 'report.md'), complete=complete)))
     return status
@@ -594,15 +596,12 @@ def main():
     p.add_argument('--max-concurrency', type=int, default=4)
     p.add_argument('--request-interval', type=float, default=1.0)
     p.add_argument('--max-attempts', type=int, default=6)
-    p.add_argument('--workers', type=int, default=6)
+    p.add_argument('--workers', type=int, default=6,
+                   help='battle: recorded in parallel-battles.json only; the fast evaluator runs its own six workers')
     p.add_argument('--watch', action='store_true', help='battle: keep scoring while generation runs')
-    p.add_argument('--battle-backend', choices=['legacy', 'fast'],
-                   help='battle: fast (default) = one persistent six-worker evaluator, a separate battle identity; '
-                        'legacy = --workers pair_shard processes. This study and its baselines are re-battled '
-                        'when their labels came from the other engine (old labels are archived)')
     p.add_argument('--win-margin', type=float, default=0.01)
     p.add_argument('--legality-margin', type=float, default=0.05)
-    p.add_argument('--data', type=Path, default=B.ROOT.parent / 'blog/mask-lab/data.json')
+    p.add_argument('--data', type=Path, default=ROOT.parent / 'blog/mask-lab/data.json')
     args = p.parse_args()
     if args.command == 'headroom':
         return headroom(args)

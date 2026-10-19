@@ -121,6 +121,6 @@ on 8 October and 71 and 68 here, so run-to-run variation is a few answers.
 ## Adding a version
 
 1. Add it to `VERSIONS` in `code/scripts/prompt_versions.py` and to the
-   dispatch in `llm_baseline.prompt`.
+   dispatch in `llm_completion.prompt` (`code/src/llm_completion.py`).
 2. Run `prompt_versions.py snapshot`, then `prompt_versions.py list` for the hash.
 3. Add a row to the table above.

@@ -6,7 +6,11 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
-import llm_baseline as B
+from repo_paths import ROOT  # also puts src/ first on sys.path
+import llm_completion
+import results
+import showdown_validator
+import team_masks
 import reasoning_experiment as E
 
 try:
@@ -20,11 +24,11 @@ SPECIES = [('Pikachu', 'Light Ball', 'Static'), ('Charizard', 'Charizardite Y', 
            ('Garchomp', 'Life Orb', 'Rough Skin'), ('Incineroar', 'Sitrus Berry', 'Intimidate'),
            ('Rotom-Wash', 'Leftovers', 'Levitate'), ('Kingambit', 'Black Glasses', 'Defiant')]
 TEAM = [dict(species=s, item=i, ability=a, nature='Jolly', moves=['Protect', 'Thunderbolt', 'Thunder', 'Volt Switch'],
-             evs={k: 0 for k in B.STATS}) for s, i, a in SPECIES]
+             evs={k: 0 for k in team_masks.STATS}) for s, i, a in SPECIES]
 TRIALS = [dict(id='s0-item-2', start=0, task='item', k=2, paths=[[0, 'item'], [2, 'evs']]),
           dict(id='s0-pokemon-1', start=0, task='pokemon', k=1, paths=[[1]]),
           dict(id='s1-move-2', start=1, task='move', k=2, paths=[[3, 'moves', 2], [4, 'nature']])]
-MANIFEST = dict(model=B.MODEL, format=B.FORMAT, starts=[TEAM, TEAM[::-1]], seed=7, trials=TRIALS,
+MANIFEST = dict(model=llm_completion.MODEL, format=showdown_validator.FORMAT, starts=[TEAM, TEAM[::-1]], seed=7, trials=TRIALS,
                 opponents=[dict(team_id=1, paste='Pikachu @ Light Ball\nAbility: Static\n- Protect')],
                 battles=50, grid={'item': [2], 'pokemon': [1], 'move': [2]}, temperature=.7, max_tokens=4096,
                 reasoning={'enabled': False}, seed_limit='simulator unseeded', preserve_empty_move_slots=True)
@@ -62,16 +66,16 @@ class StructureTests(unittest.TestCase):
                 plain = {k: v for k, v in m.items() if k != 'structure'}
                 for t in TRIALS:
                     self.assertTrue(S.check_information(m, t))
-                    a, b = B.completion_payload(m, t), B.completion_payload(plain, t)
+                    a, b = llm_completion.completion_payload(m, t), llm_completion.completion_payload(plain, t)
                     self.assertNotEqual(a.pop('messages'), b.pop('messages'))
                     self.assertEqual(a, b)
 
     def test_only_reply_format_sentences_leave_the_instructions(self):
         m = structured('chat', 'mb-regulation-v3')
-        system = B.prompt({k: v for k, v in m.items() if k != 'structure'}, TRIALS[0])[0]['content']
+        system = llm_completion.prompt({k: v for k, v in m.items() if k != 'structure'}, TRIALS[0])[0]['content']
         kept = S.strip_envelope(system)
         words = lambda text: ' '.join(text.split())  # DSPy indents multi-line instructions
-        self.assertIn(words(kept), words(B.completion_payload(m, TRIALS[0])['messages'][0]['content']))
+        self.assertIn(words(kept), words(llm_completion.completion_payload(m, TRIALS[0])['messages'][0]['content']))
         self.assertNotIn('Return only JSON', kept)
         self.assertEqual(len(system) - len(kept), sum(len(s) for s in S.ENVELOPE if s in system))
         with self.assertRaisesRegex(ValueError, 'reply-format'):
@@ -86,8 +90,8 @@ class StructureTests(unittest.TestCase):
                 self.assertEqual(answer, {'fills': FILLS[t['id']]})
                 self.assertTrue(diagnostics['strict_json'])
                 start = m['starts'][t['start']]
-                self.assertEqual(B.apply_completion(start, t['paths'], answer),
-                                 B.apply_completion(start, t['paths'], {'fills': FILLS[t['id']]}))
+                self.assertEqual(llm_completion.apply_completion(start, t['paths'], answer),
+                                 llm_completion.apply_completion(start, t['paths'], {'fills': FILLS[t['id']]}))
 
     def test_strict_types_refuse_what_the_baseline_refuses(self):
         m = structured('chat')
@@ -116,22 +120,22 @@ class StructureTests(unittest.TestCase):
         validator = Mock(return_value=None)
         m = structured('json')
         record = dict(response=response(reply('json', FILLS['s0-item-2'])), valid=False)
-        B.validate_record(record, m, TRIALS[0], h, validator)
+        llm_completion.validate_record(record, m, TRIALS[0], h, validator)
         self.assertTrue(record['valid'])
         self.assertEqual(record['structure'], {'strict_json': True})
         plain = dict(response=response(reply('json', FILLS['s0-item-2'])), valid=False)
-        B.validate_record(plain, MANIFEST, TRIALS[0], h, validator)
+        llm_completion.validate_record(plain, MANIFEST, TRIALS[0], h, validator)
         self.assertEqual(plain['team'], record['team'])
         self.assertNotIn('structure', plain)
         chat_reply = dict(response=response(reply('chat', FILLS['s0-item-2'])), valid=False)
-        B.validate_record(chat_reply, MANIFEST, TRIALS[0], h, validator)
+        llm_completion.validate_record(chat_reply, MANIFEST, TRIALS[0], h, validator)
         self.assertFalse(chat_reply['valid'])  # the baseline parser cannot read field markers
 
     def test_frozen_dspy_version_is_enforced(self):
         m = structured('chat')
         m['structure']['dspy_version'] = '0.0.0'
         with self.assertRaisesRegex(ValueError, 'differs from frozen'):
-            B.completion_payload(m, TRIALS[0])
+            llm_completion.completion_payload(m, TRIALS[0])
 
 
 # FILLS answers Fake Out for Garchomp, which the legal-choice type rightly refuses.
@@ -181,7 +185,7 @@ class LegalChoiceTests(unittest.TestCase):
         for trial in TRIALS:
             self.assertEqual(S.check_information(self.constrained(), trial), ['format', 'masked_team', 'opponents', 'requested_paths'])
             system = S.messages(self.constrained(), trial)[0]['content']
-            self.assertIn(S.strip_envelope(B.prompt(MANIFEST, trial)[0]['content']), system)
+            self.assertIn(S.strip_envelope(llm_completion.prompt(MANIFEST, trial)[0]['content']), system)
 
     def test_answers_return_in_the_baseline_shape_without_the_total(self):
         for adapter in S.ADAPTERS:
@@ -199,7 +203,7 @@ class LegalChoiceTests(unittest.TestCase):
                            else json.dumps({'fills': fields}))
                 answer = S.parse(self.constrained(adapter), trial, content, {})
                 self.assertEqual(answer, {'fills': fills})
-                B.apply_completion(TEAM, trial['paths'], answer)
+                llm_completion.apply_completion(TEAM, trial['paths'], answer)
 
     def test_a_value_outside_the_choices_is_an_invalid_answer(self):
         trial = TRIALS[2]
@@ -224,13 +228,13 @@ class LegalChoiceTests(unittest.TestCase):
     def test_prepare_records_the_constraints(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            B.save(root / 'parent/manifest.json', MANIFEST)
+            results.save(root / 'parent/manifest.json', MANIFEST)
             E.prepare(SimpleNamespace(parent=root / 'parent', output=root / 'baseline', arms=['off', 'on'],
                                       replicates=1, max_tokens=4096, request_timeout=600))
             _, runs = E.load_runs(root / 'baseline')
             for entry, folder, m in runs:
                 for t in m['trials']:
-                    B.save(folder / 'completions' / (t['id'] + '.json'),
+                    results.save(folder / 'completions' / (t['id'] + '.json'),
                            dict(request_hash=entry['request_hashes'][t['id']], valid=False, error='wrong number of fills',
                                 response={'choices': [{'finish_reason': 'stop'}], 'usage': {'cost': .001}}))
             E.report(SimpleNamespace(output=root / 'baseline'))
@@ -247,7 +251,7 @@ class ExperimentTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        B.save(self.root / 'parent/manifest.json', MANIFEST)
+        results.save(self.root / 'parent/manifest.json', MANIFEST)
         self.baseline = self.root / 'baseline'
         E.prepare(SimpleNamespace(parent=self.root / 'parent', output=self.baseline, arms=['off', 'on'],
                                   replicates=1, max_tokens=4096, request_timeout=600))
@@ -269,10 +273,10 @@ class ExperimentTests(unittest.TestCase):
             row['error'] = 'wrong number of fills'
         if strict is not None:
             row['structure'] = {'strict_json': strict}
-        B.save(folder / 'completions' / (t['id'] + '.json'), row)
-        B.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7})
+        results.save(folder / 'completions' / (t['id'] + '.json'), row)
+        results.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7})
         if wins is not None:
-            B.save(folder / 'labels' / ('llm-' + t['id'] + '.json'), dict(battles=50, wins=wins))
+            results.save(folder / 'labels' / ('llm-' + t['id'] + '.json'), dict(battles=50, wins=wins))
 
     def test_prepare_mirrors_every_baseline_run(self):
         X.prepare(self.args)
@@ -321,9 +325,9 @@ class ExperimentTests(unittest.TestCase):
         for entry, folder, m in runs:
             old_entry, old = original[entry['baseline_path']]
             t = m['trials'][0]
-            self.assertEqual(B.completion_payload(m, t)['provider']['order'], ['deepinfra'])
+            self.assertEqual(llm_completion.completion_payload(m, t)['provider']['order'], ['deepinfra'])
             if entry['variant'] == 'resampled':
-                self.assertEqual(B.completion_payload(m, t)['messages'], B.completion_payload(old, t)['messages'])
+                self.assertEqual(llm_completion.completion_payload(m, t)['messages'], llm_completion.completion_payload(old, t)['messages'])
                 self.assertNotEqual(entry['request_hashes'], old_entry['request_hashes'])
             for t in m['trials']:
                 self.save(folder, entry, t, True, wins=2)
@@ -335,7 +339,7 @@ class ExperimentTests(unittest.TestCase):
         _, runs = E.load_runs(self.args.output)
         entry, folder, m = runs[0]
         self.save(folder, entry, m['trials'][0], True, wins=3)
-        B.save(folder / 'battle-config.json', {'policy': 'other', 'seed': 7})
+        results.save(folder / 'battle-config.json', {'policy': 'other', 'seed': 7})
         with self.assertRaisesRegex(ValueError, 'not comparable'):
             X.report(self.args)
 
@@ -343,12 +347,12 @@ class ExperimentTests(unittest.TestCase):
     def rebattle_baseline_on_fast(self, wins):
         import reasoning_battles as RB
         _, runs = E.load_runs(self.baseline)
-        RB.study_backend(self.baseline, runs, 'fast')
+        RB.archive_legacy_study(self.baseline, runs)
         for entry, folder, m in runs:
-            B.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7, 'backend': 'fast'})
+            results.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7, 'backend': 'fast'})
             for t in m['trials']:
                 if t['id'] != 's1-move-2':
-                    B.save(folder / 'labels' / ('llm-' + t['id'] + '.json'), dict(battles=50, wins=wins))
+                    results.save(folder / 'labels' / ('llm-' + t['id'] + '.json'), dict(battles=50, wins=wins))
         E.report(SimpleNamespace(output=self.baseline))
 
     def test_report_accepts_a_baseline_rebattled_on_another_engine(self):
@@ -358,7 +362,7 @@ class ExperimentTests(unittest.TestCase):
         for entry, folder, m in runs:
             for t in m['trials']:
                 self.save(folder, entry, t, True, wins=5)
-            B.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7, 'backend': 'fast'})
+            results.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7, 'backend': 'fast'})
         status = X.report(self.args)
         self.assertTrue(status['complete'])
         cell = next(c for c in status['cells'] if c['variant'] == 'chat' and c['reasoning'] == 'off')
@@ -369,7 +373,7 @@ class ExperimentTests(unittest.TestCase):
         self.rebattle_baseline_on_fast(wins=4)
         status = E.read(self.baseline / 'status.json')
         status['rows'][0]['legal'] = not status['rows'][0]['legal']
-        B.save(self.baseline / 'status.json', status)
+        results.save(self.baseline / 'status.json', status)
         with self.assertRaisesRegex(ValueError, 'baseline status changed since prepare'):
             X.report(self.args)
 
@@ -395,7 +399,7 @@ class StatisticsTests(unittest.TestCase):
         self.assertEqual(X.verdict(dict(mean=0, low=-.03, high=.02), .01), 'unclear: interval includes zero')
 
     def test_headroom_reads_published_mask_lab_data(self):
-        rows = X.headroom(SimpleNamespace(data=B.ROOT.parent / 'blog/mask-lab/data.json'))
+        rows = X.headroom(SimpleNamespace(data=ROOT.parent / 'blog/mask-lab/data.json'))
         off = next(r for r in rows if r['reasoning'] == 'off')
         self.assertEqual((off['attempts'], off['legal']), (420, 119))
         self.assertAlmostEqual(off['ceiling'], (119 + 72 + 48) / 420)

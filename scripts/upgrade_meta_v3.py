@@ -9,12 +9,13 @@ import signal
 import subprocess
 import sys
 import time
-import llm_baseline as B
+from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 from resume_full_grid import restore_runtime
 
-BASE=B.ROOT/'results/llm-baseline-meta-starters'
-OLD=B.ROOT/'results/diffusion-baseline-meta-starters'
-NEW=B.ROOT/'results/diffusion-baseline-meta-starters-v3'
+BASE=ROOT/'results/llm-baseline-meta-starters'
+OLD=ROOT/'results/diffusion-baseline-meta-starters'
+NEW=ROOT/'results/diffusion-baseline-meta-starters-v3'
 MEMBERS=['F1_final_medium_noheldout_regmb_v3','G2_family_matrix_noprtrain_noheldout_regmb_v3']
 
 
@@ -27,13 +28,13 @@ def locked(path):
 
 
 def stage(name):
-    B.save(BASE/'pipeline-progress.json',dict(stage=name,status='running',time=time.time()))
+    results.save(BASE/'pipeline-progress.json',dict(stage=name,status='running',time=time.time()))
     print(name,flush=True)
 
 
 def execute(name,arguments):
     with (BASE/(name+'.log')).open('a') as log:
-        result=subprocess.run([sys.executable,str(B.ROOT/'scripts'/arguments[0]),*arguments[1:]],stdout=log,stderr=subprocess.STDOUT)
+        result=subprocess.run([sys.executable,str(ROOT/'scripts'/arguments[0]),*arguments[1:]],stdout=log,stderr=subprocess.STDOUT)
     if result.returncode:raise RuntimeError(name+' failed; inspect '+str(BASE/(name+'.log')))
 
 
@@ -46,12 +47,12 @@ def main(args):
     m=json.loads((BASE/'manifest.json').read_text());trials=m['trials']
     with (BASE/'.upgrade.lock').open('w') as guard:
         fcntl.flock(guard,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        B.save(BASE/'diffusion-selection.json',dict(version='v3',results=NEW.name,members=MEMBERS,
+        results.save(BASE/'diffusion-selection.json',dict(version='v3',results=NEW.name,members=MEMBERS,
                  previous_results=OLD.name,target_win_rate=.5,guidance=2,temperature=1))
         stage('waiting_for_v2_generation')
         if not locked(BASE/'.progress-watcher.lock'):
             with (BASE/'progress-v3.log').open('a') as log:
-                subprocess.Popen([sys.executable,str(B.ROOT/'scripts/watch_meta_grid.py')],stdout=log,stderr=subprocess.STDOUT)
+                subprocess.Popen([sys.executable,str(ROOT/'scripts/watch_meta_grid.py')],stdout=log,stderr=subprocess.STDOUT)
         while locked(OLD/'.lock'): time.sleep(10)
         if not finished(OLD,trials):
             execute('finish-v2',['diffusion_baseline.py','generate','--baseline',str(BASE),'--output',str(OLD),'--members','F1_final_medium_noheldout_regmb_v2','G2_family_matrix_noprtrain_noheldout_regmb_v2'])
@@ -77,8 +78,8 @@ def main(args):
         stage('battles_v3')
         execute('battles-v3',['dense_grid_battles.py','--baseline',str(BASE),'--diffusion',str(NEW),'--workers','6'])
         execute('report-v3',['meta_starter_grid.py','report'])
-        subprocess.run([sys.executable,str(B.ROOT/'dashboard/build.py')],check=True)
-        B.save(BASE/'pipeline-progress.json',dict(stage='complete',status='complete',time=time.time()))
+        subprocess.run([sys.executable,str(ROOT/'dashboard/build.py')],check=True)
+        results.save(BASE/'pipeline-progress.json',dict(stage='complete',status='complete',time=time.time()))
         print('V3 comparison complete.',flush=True)
 
 
@@ -88,5 +89,5 @@ if __name__=='__main__':
     except BlockingIOError:
         print('The v3 upgrade is already running; no work was restarted.',flush=True)
     except Exception as exc:
-        B.save(BASE/'pipeline-progress.json',dict(status='interrupted',error=str(exc),time=time.time()))
+        results.save(BASE/'pipeline-progress.json',dict(status='interrupted',error=str(exc),time=time.time()))
         raise

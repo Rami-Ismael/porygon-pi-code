@@ -211,7 +211,8 @@ parallel scorer owns battle scoring for that run and continues independently.
 
 ```sh
 python3 -m unittest discover -s code/scripts -p 'test_reasoning_experiment.py'
-python3 -m unittest discover -s code/scripts -p 'test_llm_baseline.py'
+python3 -m unittest discover -s code/scripts -p 'test_llm_completion.py'
+python3 -m unittest discover -s code/scripts -p 'test_battles.py'
 python3 -m unittest discover -s code/scripts -p 'test_openrouter_generation.py'
 python3 -m unittest discover -s code/scripts -p 'test_reasoning_battles.py'
 ```

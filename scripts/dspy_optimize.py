@@ -21,7 +21,11 @@ from types import SimpleNamespace
 import dspy
 
 import dspy_structure as S
-import llm_baseline as B
+import repo_paths  # puts src/ first on sys.path
+import battles
+import llm_completion
+import results
+import showdown_validator
 
 SPLITS = ('train', 'dev')
 
@@ -29,7 +33,7 @@ SPLITS = ('train', 'dev')
 def prepare(args):
     """Sample optimization starters disjoint from the test starters and the pool."""
     import run_reasoning_pilot as P
-    parent = B.load_manifest(SimpleNamespace(output=args.parent))
+    parent = llm_completion.load_manifest(SimpleNamespace(output=args.parent))
     if args.output.exists() and any(args.output.iterdir()):
         raise ValueError('output must be empty')
     if parent.get('prompt_version') == 'mb-grounded-v2':
@@ -37,7 +41,7 @@ def prepare(args):
     count = args.train_starters + args.dev_starters
     m = P.fresh_starters(parent, count, args.seed)  # excludes parent starters and every pool team
     split = {str(i): 'train' if i < args.train_starters else 'dev' for i in range(count)}
-    m.update(optimization=dict(parent=str(args.parent), parent_manifest_sha256=B.digest(parent),
+    m.update(optimization=dict(parent=str(args.parent), parent_manifest_sha256=results.digest(parent),
                                split=split, adapter=args.adapter,
                                rule='largest mask per family; starters sampled fresh'))
     constraints = getattr(args, 'constraints', None)
@@ -46,7 +50,7 @@ def prepare(args):
     m['structure'] = S.config(args.adapter, constraints=constraints)
     for trial in m['trials']:
         S.check_information(m, trial)
-    B.save(args.output / 'manifest.json', m)
+    results.save(args.output / 'manifest.json', m)
     print(json.dumps(dict(output=str(args.output), train=args.train_starters, dev=args.dev_starters,
                           tasks=len(m['trials']))))
 
@@ -138,16 +142,16 @@ class Metric:
             answer = S.as_fills(pred.fills, trial['paths'])
         else:
             answer = {'fills': [f.model_dump() for f in pred.fills]}
-        team = B.apply_completion(self.manifest['starts'][trial['start']], trial['paths'], answer)
-        error = self.validator(B.paste(team, self.h))
+        team = llm_completion.apply_completion(self.manifest['starts'][trial['start']], trial['paths'], answer)
+        error = self.validator(showdown_validator.paste(team, self.h))
         if error:
             raise ValueError(error)
         return team
 
     def battle_panel(self, trial, team):
-        label = f"llm-{trial['id']}-{B.digest(team)[:12]}"
+        label = f"llm-{trial['id']}-{results.digest(team)[:12]}"
         result = {}
-        B.battle(SimpleNamespace(output=self.output), candidates_override=[(label, team)],
+        battles.battle(SimpleNamespace(output=self.output), candidates_override=[(label, team)],
                  on_result=lambda _, r: result.update(r))
         return result['wins'] / result['battles']
 
@@ -159,7 +163,7 @@ class Metric:
             return dspy.Prediction(score=0.0, feedback=f'Rejected: {exc}')
         if not self.battles:
             return dspy.Prediction(score=1.0, feedback='Legal: passed the shape checks and the Showdown validator.')
-        key = B.digest(dict(team=team, start=trial['start']))
+        key = results.digest(dict(team=team, start=trial['start']))
         if key not in self.cache:
             self.cache[key] = self.battle(trial, team)
         win = self.cache[key]
@@ -254,11 +258,11 @@ def export(program, manifest, optimizer):
 
 
 def optimize(args):
-    m = B.load_manifest(SimpleNamespace(output=args.output))
+    m = llm_completion.load_manifest(SimpleNamespace(output=args.output))
     if 'optimization' not in m:
         raise ValueError('run prepare first')
     train, dev = examples(m, 'train'), examples(m, 'dev')
-    h, _ = B.runtime()
+    h, _ = showdown_validator.runtime()
     validator = h.Validator()
     # Retries go to LiteLLM, which backs off exponentially; more of them ride out shared-pool rate limits.
     lm = lm_for(m, num_retries=args.num_retries)
@@ -301,7 +305,7 @@ def optimize(args):
                         reflection_lm_cost_usd=reflection_cost, max_demos=args.max_demos, seed=args.seed,
                         train_tasks=len(train), dev_tasks=len(dev), dev_score_before=before,
                         dev_score_after=after, task_lm_cost_usd=cost, dspy_version=dspy.__version__)
-        B.save(args.output / 'program.json', export(optimized, m, settings))
+        results.save(args.output / 'program.json', export(optimized, m, settings))
         optimized.save(str(args.output / 'dspy-program.json'))
         print(json.dumps(settings))
     finally:

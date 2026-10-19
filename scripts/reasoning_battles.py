@@ -1,15 +1,16 @@
 """Parallelize independent exact battle panels, optionally as generation arrives."""
 import argparse
-from concurrent.futures import ProcessPoolExecutor
 import fcntl
 import json
-import multiprocessing
 import os
 from pathlib import Path
 import time
 from types import SimpleNamespace
 
-import llm_baseline as B
+import repo_paths  # puts src/ first on sys.path
+import battles
+import results
+import showdown_validator
 import reasoning_experiment as E
 
 
@@ -29,8 +30,8 @@ def plan(runs, canonical):
             row = E.completion(folder, entry, trial)
             if row is None or not row['valid']:
                 continue
-            key = B.digest(dict(team=canonical(row['team']),
-                                schedule=B.schedule_for(m, trial['start'])))
+            key = results.digest(dict(team=canonical(row['team']),
+                                schedule=battles.schedule_for(m, trial['start'])))
             group = groups.setdefault(key, dict(key=key, team=row['team'], start=trial['start'], destinations=[]))
             group['destinations'].append(str(folder / 'labels' / ('llm-' + trial['id'] + '.json')))
     return [g for g in groups.values() if any(not Path(p).exists() for p in g['destinations'])]
@@ -53,87 +54,54 @@ def publish(group, result, config):
             if old is not None and old != result:
                 raise ValueError(f'refusing to replace saved battle result: {destination}')
             if old_config is None:
-                B.save(config_path, config)
+                results.save(config_path, config)
             if old is None:
-                B.save(destination, result)
+                results.save(destination, result)
 
 
-def study_backend(output, runs, requested=None):
-    """Fast unless legacy is named. Run folders battled on the other engine are
-    archived before planning, so the whole study is re-battled on one engine;
-    the study summaries computed from the old labels move with them."""
-    backend = B.resolve_backend(requested)
-    old = {B.recorded_backend(folder) for _, folder, _ in runs} - {None, backend}
+def archive_legacy_study(output, runs):
+    """Run folders battled on the removed legacy engine are archived before planning,
+    so the whole study is re-battled on the fast evaluator; the study summaries
+    computed from the old labels move with them."""
+    legacy = any(battles.recorded_backend(folder) == 'legacy' for _, folder, _ in runs)
     for _, folder, _ in runs:
-        B.switch_engine(folder, backend)
-    if old:
-        archive = Path(output) / f"archive-{'-'.join(sorted(old))}-battles-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
+        battles.archive_legacy_labels(folder)
+    if legacy:
+        archive = Path(output) / f"archive-legacy-battles-{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}"
         archive.mkdir()
         for name in ('status.json', 'report.md', 'parallel-battles.json'):
             if (Path(output) / name).exists():
                 (Path(output) / name).rename(archive / name)
-    return backend
 
 
 def fast_worker(output, manifest, groups):
     """All groups through one persistent six-worker evaluator, in this process."""
     folder = Path(output) / 'battle-fast'
-    B.save(folder / 'manifest.json', manifest)
+    results.save(folder / 'manifest.json', manifest)
     by_label = {f"p{g['key']}-s{g['start']}": g for g in groups}
     def finished(label, result):
         publish(by_label[label], result, E.read(folder / 'battle-config.json'))
-    B.battle(SimpleNamespace(output=folder, battle_backend='fast'),
-             candidates_override=[(label, g['team']) for label, g in by_label.items()],
-             on_result=finished)
+    battles.battle(SimpleNamespace(output=folder),
+                   candidates_override=[(label, g['team']) for label, g in by_label.items()],
+                   on_result=finished)
     return len(groups)
 
 
-def worker(output, index, manifest, groups):
-    folder = Path(output) / 'battle-workers' / str(index)
-    B.save(folder / 'manifest.json', manifest)
-    by_label = {f"p{g['key']}-s{g['start']}": g for g in groups}
-    # Separate log per worker; publishing happens after each complete panel.
-    with (folder / 'worker.log').open('a', buffering=1) as log:
-        os.dup2(log.fileno(), 1)
-        os.dup2(log.fileno(), 2)
-        def finished(label, result):
-            publish(by_label[label], result, E.read(folder / 'battle-config.json'))
-        B.battle(SimpleNamespace(output=folder, battle_backend='legacy'),
-                 candidates_override=[(label, g['team']) for label, g in by_label.items()],
-                 on_result=finished)
-    return len(groups)
-
-
-def score(output, workers, backend=None):
+def score(output):
     _, runs = E.load_runs(output)
-    backend = study_backend(output, runs, backend)
-    h, db = B.runtime()
-    groups = plan(runs, lambda team: db.canonical_paste(B.paste(team, h)))
-    # Register teams and paste files before spawning: identical teams with
-    # different schedules may be assigned to different workers.
+    archive_legacy_study(output, runs)
+    h, db = showdown_validator.runtime()
+    groups = plan(runs, lambda team: db.canonical_paste(showdown_validator.paste(team, h)))
+    # A team's first insert sets its origin: record this study, not the evaluator's battle-fast folder.
     con = db.connect()
     validator = h.Validator()
     try:
         for group in groups:
-            tid = db.add_team(con, B.paste(group['team'], h), 'reasoning-parallel:' + output.name, validator)[0]
-            db.paste_file(con, tid)
-        for opponent in runs[0][2]['opponents']:
-            db.paste_file(con, opponent['team_id'])
+            db.add_team(con, showdown_validator.paste(group['team'], h), 'reasoning-parallel:' + output.name, validator)
     finally:
         validator.close()
         con.close()
-    if backend == 'fast':
-        return fast_worker(output, runs[0][2], groups) if groups else 0
-    buckets = [[] for _ in range(workers)]
-    for group in groups:
-        buckets[int(group['key'], 16) % workers].append(group)
-    # Spawn avoids sharing SQLite connections, Torch state or simulator sockets.
-    with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context('spawn')) as pool:
-        jobs = [pool.submit(worker, str(output), i, runs[0][2], bucket)
-                for i, bucket in enumerate(buckets) if bucket]
-        for job in jobs:
-            job.result()
-    return len(groups)
+    return fast_worker(output, runs[0][2], groups) if groups else 0
 
 
 def progress(output):
@@ -154,12 +122,9 @@ def progress(output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--workers', type=int, default=4)
+    parser.add_argument('--workers', type=int, default=4,
+                        help='recorded in parallel-battles.json only: the fast evaluator runs its own six workers')
     parser.add_argument('--watch', action='store_true', help='score new legal responses as generation continues')
-    parser.add_argument('--battle-backend', choices=['legacy', 'fast'],
-                        help='fast (default) = one persistent six-worker evaluator (--workers is ignored), a separate '
-                             'battle identity; legacy = --workers pair_shard processes. Labels from the other engine '
-                             'are archived and the study is re-battled')
     args = parser.parse_args()
     if not 1 <= args.workers <= 32:
         parser.error('workers must be between 1 and 32')
@@ -170,11 +135,11 @@ def main():
         try:
             while True:
                 state = dict(progress(args.output), workers=args.workers, stage='scoring', updated_at=time.time())
-                B.save(args.output / 'parallel-battles.json', state)
-                panels = score(args.output, args.workers, args.battle_backend)
+                results.save(args.output / 'parallel-battles.json', state)
+                panels = score(args.output)
                 state = dict(progress(args.output), workers=args.workers, updated_at=time.time())
                 state['stage'] = 'complete' if state['complete'] else 'waiting_for_generation'
-                B.save(args.output / 'parallel-battles.json', state)
+                results.save(args.output / 'parallel-battles.json', state)
                 print(json.dumps(dict(state, new_panels=panels)), flush=True)
                 if state['complete'] or not args.watch:
                     # An older generation process may still write its end-of-run
@@ -185,7 +150,7 @@ def main():
                     break
                 time.sleep(30)
         except Exception as exc:
-            B.save(args.output / 'parallel-battles.json', dict(stage='failed', error=f'{type(exc).__name__}: {exc}', updated_at=time.time()))
+            results.save(args.output / 'parallel-battles.json', dict(stage='failed', error=f'{type(exc).__name__}: {exc}', updated_at=time.time()))
             raise
 
 

@@ -5,7 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 import time
-import llm_baseline as B
+from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 from meta_starter_grid import BASE,DIFF,selection
 
 
@@ -27,18 +28,18 @@ def main():
                          diffusion=len(diffusion),diffusionLegal=sum(r[1] for r in diffusion.values()),
                          panels=len(list((BASE/'workers').glob('*/labels/*.json'))),error=progress.get('error'))
             payload['diffusionVersion']=selection.get('version','v2')
-            payload['previousDiffusion']=len(list((B.ROOT/'results/diffusion-baseline-meta-starters/completions').glob('*.json')))
+            payload['previousDiffusion']=len(list((ROOT/'results/diffusion-baseline-meta-starters/completions').glob('*.json')))
             training=list((Path.home()/'.local/share/vgc-pilot-runtime/regmb-v3').glob('*-progress.json'))
             if training:
                 latest=max(training,key=lambda p:p.stat().st_mtime_ns)
                 payload['training']=dict(json.loads(latest.read_text()),member=latest.name.replace('-progress.json',''))
-            B.save(B.ROOT/'dashboard/meta-progress.json',payload)
+            results.save(ROOT/'dashboard/meta-progress.json',payload)
             if progress['status']=='complete':
                 # Report through the current code so a long-running coordinator
                 # can still publish the latest dashboard implementation.
-                result=subprocess.run([sys.executable,str(B.ROOT/'scripts/meta_starter_grid.py'),'report'])
+                result=subprocess.run([sys.executable,str(ROOT/'scripts/meta_starter_grid.py'),'report'])
                 if result.returncode: time.sleep(15);continue
-                subprocess.run([sys.executable,str(B.ROOT/'dashboard/build.py')],check=True)
+                subprocess.run([sys.executable,str(ROOT/'dashboard/build.py')],check=True)
                 return
             if progress['status']=='interrupted': return
             time.sleep(15)

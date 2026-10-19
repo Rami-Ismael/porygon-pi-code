@@ -50,6 +50,7 @@ panel round-robin. This is shared across candidates. The objective is the panel'
 win fraction; it slightly overweights the repeated opponent, not exactly the
 uniform mean of 49 opponents.
 
+The legacy engine, removed on 19 October 2026, worked as follows (labels it recorded stay readable).
 `bc_100.zip` is loaded through PPO and passed to both `BatchPolicyPlayer` instances.
 The checkpoint's project identity is `57f5edcab415cf6c`; the full SHA-256 is in
 `battle-config.json`. An isolated Showdown process uses the same checkout as the
@@ -65,12 +66,12 @@ hashes, seed, concurrency and format. Existing aggregate matchup cells cannot
 prove identical conditions and are not reused. Incomplete or unattributed panels
 are rejected. Candidate labels resume from exact cached panels.
 
-### Fast engine (default from 14 October 2026)
+### Fast engine (default from 14 October 2026, the only engine from 19 October 2026)
 
 `battle` now runs these panels on the persistent six-worker evaluator
 (`team_completion_pipeline/fast_battle_runner.py`, 24 battles per worker), several
-panels per evaluator call. `--battle-backend legacy` restores the pair_shard path
-above. The schedule, battle export (zero-point Serious written as Hardy), policy,
+panels per evaluator call. The pair_shard path above was removed on 19 October 2026
+(`src/battles.py`); `--battle-backend legacy` now fails and says so. The schedule, battle export (zero-point Serious written as Hardy), policy,
 50-battle completeness check and label format are unchanged; a completion equal to a
 pool team still plays its mirror.
 
@@ -86,7 +87,8 @@ too), `dspy_structure_experiment.py battle` also re-battles its baseline studies
 its report accepts a re-battled baseline only when the prepared status sits in that
 baseline's archive and differs from the new one only in win rates.
 `matched_diffusion_study.py` stays legacy: it asserts the legacy fingerprints and
-that its baseline files never change.
+that its baseline files never change. Since the legacy engine's removal it still reports
+its saved panels but refuses to battle new ones; re-run those from a commit before 19 October 2026.
 
 Measured 14–15 October 2026 on the same 48 fixture panels (2,400 battles; random-fill
 controls from `prompt-regulation-test`), on a copy of the matchup database, legacy as

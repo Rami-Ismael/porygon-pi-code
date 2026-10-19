@@ -6,7 +6,10 @@ import unittest
 import unittest.mock
 from unittest.mock import Mock
 
-import llm_baseline as B
+import repo_paths  # puts src/ first on sys.path
+import llm_completion
+import results
+import showdown_validator
 
 try:
     import dspy
@@ -61,7 +64,7 @@ class OptimizeTests(unittest.TestCase):
         program.predict.demos = [dspy.Example(**example.inputs(), fills=FILLS['s0-item-2'])]
         exported = O.export(program, self.m, {'name': 'test'})
         m = dict(MANIFEST, structure=S.config('chat', exported['instructions'], exported['demos']))
-        system, *demo, user = B.completion_payload(m, TRIALS[2])['messages']
+        system, *demo, user = llm_completion.completion_payload(m, TRIALS[2])['messages']
         self.assertIn('Fill each null with a legal value.', system['content'])
         self.assertNotIn('Complete only the null fields', system['content'])
         self.assertEqual(len(demo), 2)  # one demonstration: a user turn and an assistant turn
@@ -92,9 +95,9 @@ class LegalChoiceOptimizeTests(unittest.TestCase):
         self.assertIn('slot3_move2', messages[0]['content'])
         self.assertIn('Earthquake', messages[0]['content'])
         self.assertEqual(self.metric(self.example, pred).score, 1.0)
-        self.assertEqual(B.apply_completion(MANIFEST['starts'][1], TRIALS[2]['paths'],
+        self.assertEqual(llm_completion.apply_completion(MANIFEST['starts'][1], TRIALS[2]['paths'],
                                             S.as_fills(pred.fills, TRIALS[2]['paths'])),
-                         B.apply_completion(MANIFEST['starts'][1], TRIALS[2]['paths'], {'fills': LEGAL_FILLS['s1-move-2']}))
+                         llm_completion.apply_completion(MANIFEST['starts'][1], TRIALS[2]['paths'], {'fills': LEGAL_FILLS['s1-move-2']}))
 
     def test_a_refused_value_reaches_gepa_as_feedback(self):
         pred, _ = self.run_program({'slot3_move2': 'Fake Out', 'slot4_nature': 'Calm'})
@@ -120,7 +123,7 @@ class LegalChoiceOptimizeTests(unittest.TestCase):
         # The phase-one test path sends the adapter's messages and no response_format.
         trial = TRIALS[2]
         _, messages = self.run_program({'slot3_move2': 'Earthquake', 'slot4_nature': 'Calm'})
-        self.assertEqual(messages, B.completion_payload(self.m, trial)['messages'])
+        self.assertEqual(messages, llm_completion.completion_payload(self.m, trial)['messages'])
         kwargs = {}
         O.lenient(S.adapter_for(S.config('json', constraints='legal-choices')))._prepare_response_format(None, kwargs, None)
         self.assertEqual(kwargs, {})
@@ -145,9 +148,9 @@ class LegalChoiceOptimizeTests(unittest.TestCase):
 
     def test_mipro_is_refused_with_legal_choice_types(self):
         with tempfile.TemporaryDirectory() as tmp:
-            B.save(Path(tmp) / 'manifest.json', self.m)
+            results.save(Path(tmp) / 'manifest.json', self.m)
             args = SimpleNamespace(output=Path(tmp), optimizer='mipro', num_retries=3)
-            with unittest.mock.patch.object(B, 'runtime', return_value=(self.h, None)), \
+            with unittest.mock.patch.object(showdown_validator, 'runtime', return_value=(self.h, None)), \
                  unittest.mock.patch.object(O, 'lm_for', return_value=DummyLM([])):
                 self.h.Validator = Mock(return_value=self.validator)
                 with self.assertRaisesRegex(ValueError, 'MIPROv2'):
@@ -194,12 +197,12 @@ class ReflectionModelTests(unittest.TestCase):
 
         writer = DummyLM([])
         with tempfile.TemporaryDirectory() as tmp:
-            B.save(Path(tmp) / 'manifest.json', self.m)
+            results.save(Path(tmp) / 'manifest.json', self.m)
             args = SimpleNamespace(output=Path(tmp), optimizer='gepa', battles=False, alpha=.5, budget='light',
                                    threads=1, seed=1, reflection_model='openai/gpt-6-luna', reflection_effort='high',
                                    num_retries=8)
             h = Mock(Validator=Mock(return_value=Mock()))
-            with unittest.mock.patch.object(B, 'runtime', return_value=(h, None)), \
+            with unittest.mock.patch.object(showdown_validator, 'runtime', return_value=(h, None)), \
                  unittest.mock.patch.object(O, 'lm_for', return_value=DummyLM([])), \
                  unittest.mock.patch.object(O, 'reflection_lm_for', return_value=writer) as make_writer, \
                  unittest.mock.patch.object(dspy, 'GEPA', side_effect=fake_gepa):
@@ -258,11 +261,11 @@ class ReflectionShapeTests(unittest.TestCase):
             raise Stop
 
         with tempfile.TemporaryDirectory() as tmp:
-            B.save(Path(tmp) / 'manifest.json', self.m)
+            results.save(Path(tmp) / 'manifest.json', self.m)
             args = SimpleNamespace(output=Path(tmp), optimizer='gepa', battles=False, alpha=.5, budget='light',
                                    threads=1, seed=1, reflection_model=None, reflection_effort='high', num_retries=3)
             h = Mock(Validator=Mock(return_value=Mock()))
-            with unittest.mock.patch.object(B, 'runtime', return_value=(h, None)), \
+            with unittest.mock.patch.object(showdown_validator, 'runtime', return_value=(h, None)), \
                  unittest.mock.patch.object(O, 'lm_for', return_value=DummyLM([])), \
                  unittest.mock.patch.object(dspy, 'GEPA', side_effect=fake_gepa):
                 with self.assertRaises(Stop):
