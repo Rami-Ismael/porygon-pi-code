@@ -30,6 +30,7 @@ import diffusion as D
 from corpus import parse_team_text
 from encode import NF
 from hps_generate import Validator
+from checkpoints import load_checkpoint
 
 
 def atomic_json(path, value):
@@ -186,7 +187,7 @@ class Runtime:
         prior = DC.posterior_copy(DC.PathSampler(self.base, D.ORDER, L.DEV))
         ensemble = self.ensemble(seed)
         if ck.exists():
-            data = torch.load(ck, map_location=L.DEV, weights_only=False)
+            data = load_checkpoint(ck, map_location=L.DEV)
             if data["signature"] != self.signature or data["rows"] != rows:
                 raise ValueError("model cache does not match this round's observations")
             prior.model.load_state_dict(data["prior"])

@@ -23,6 +23,7 @@ import asked_vs_got as X
 import hps_generate as H
 from corpus import norm
 from regmb_training_policy import mega_stone_users,training_regulation,sample_moves,encode_training_team
+from checkpoints import load_checkpoint
 
 MANIFEST = CODE/'data/regmb-vocabulary.json'
 OUT = Path.home()/'.local/share/vgc-pilot-runtime/regmb-v2'
@@ -182,7 +183,7 @@ def train(args):
     for member in args.members:
         name=member+'_regmb_'+args.version; dest=L.CK/(name+'.pt')
         if dest.exists() and not args.replace:
-            previous=torch.load(dest,map_location='cpu')
+            previous=load_checkpoint(dest,map_location='cpu')
             if previous.get('provenance',{}).get('data_audit_sha256')!=sha(OUT/'data-audit.json'):
                 raise ValueError('existing checkpoint used different data; use --replace explicitly')
             if previous.get('provenance',{}).get('trainer_sha256')!=sha(Path(__file__)):
@@ -191,7 +192,7 @@ def train(args):
                 raise ValueError('training settings changed; use --replace explicitly')
             print('Already trained:',name,flush=True);continue
         torch.manual_seed(SEED);np.random.seed(SEED)
-        ck=torch.load(L.CK/(member+'.pt'),map_location=L.DEV);cfg=dict(L.DEFAULT,**ck['cfg'])
+        ck=load_checkpoint(L.CK/(member+'.pt'),map_location=L.DEV);cfg=dict(L.DEFAULT,**ck['cfg'])
         idx=tr[(tag[tr]==L.TEST_TAG)|(tag[tr]==0)|((d['M'][tr,:,1].sum(1)>0) if cfg['mrow'] else False)]
         if cfg['mrow']:idx=np.setdiff1d(idx,L.matrix_holdout(d))
         idx=idx[mapped['valid'][idx]];vi=val[mapped['valid'][val]]

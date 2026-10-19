@@ -44,10 +44,11 @@ def generate(args):
     import asked_vs_got as X
     import diffusion as D
     from corpus import norm
+    from checkpoints import load_checkpoint
     torch.set_num_threads(1)
     L.DEV = D.DEV = torch.device('cpu')
     corpus, vocab, _, look, spreads = X.setup()
-    first = torch.load(L.CK/(args.members[0]+'.pt'),map_location='cpu')
+    first = load_checkpoint(L.CK/(args.members[0]+'.pt'),map_location='cpu')
     if first.get('regulation'):
         from encode import Vocab
         vocab = Vocab.from_regulation(first['regulation'])

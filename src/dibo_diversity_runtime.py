@@ -8,6 +8,7 @@ import dibo_v4 as DB
 import dibo_core_v4 as DC
 import dibo_diversity as DV
 from boltzmann_selection import linear_temperature
+from checkpoints import load_checkpoint
 
 
 class ProposalMask(nn.Module):
@@ -99,7 +100,7 @@ class Runtime(DB.Runtime):
         ensemble = self.ensemble(seed)
         ck = self.checkdir / f'round{generation}.pt'
         if ck.exists():
-            saved = torch.load(ck, map_location=DB.L.DEV, weights_only=False)
+            saved = load_checkpoint(ck, map_location=DB.L.DEV)
             if saved['signature'] != self.signature or saved['rows'] != rows:
                 raise ValueError('diversity checkpoint inputs changed')
             prior.model.load_state_dict(saved['prior'])

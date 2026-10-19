@@ -9,6 +9,7 @@ import torch
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'src'))
 import dibo_v4 as D
+from checkpoints import load_checkpoint
 
 
 def main():
@@ -19,7 +20,7 @@ def main():
     results=[]
     try:
         for generation in [0,protocol['config']['rounds']-1]:
-            ck=torch.load(runtime.checkdir/f'round{generation}.pt',map_location=D.L.DEV,weights_only=False)
+            ck=load_checkpoint(runtime.checkdir/f'round{generation}.pt',map_location=D.L.DEV)
             ensemble=runtime.ensemble(protocol['config']['seed'])
             ensemble.load_state_dict(ck['ensemble']);ensemble.eval()
             x=torch.tensor([r['x'] for r in ck['rows'][:128]],device=D.L.DEV).reshape(-1,6,8)
