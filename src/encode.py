@@ -10,6 +10,7 @@ sorting slots on species before any distance is computed, and slot order is rand
 permuted during training as augmentation.
 """
 import json, random
+from pathlib import Path
 from collections import defaultdict
 import numpy as np
 from corpus import (load_corpus, norm, dex_entry, legal_moves, legal_abilities,
@@ -30,6 +31,12 @@ def team_fields(team):
                 norm(ms[0]), norm(ms[1]), norm(ms[2]), norm(ms[3]), norm(s["nature"])]
     return out
 
+def _with_excluded(teams):
+    """Held-out teams (heldout.py) are not training rows, but they stay in the vocabulary and the rule
+    tables: dropping them shrinks both (species 190 -> 187, moves 317 -> 311) and moves every token id."""
+    import heldout
+    return list(teams) + heldout.excluded_teams()
+
 def strict_ids(stoi, pairs, source):
     """Token ids for (vocabulary key, value) pairs. Every encoder goes through here:
     a value outside the vocabulary raises instead of becoming 0, the [MASK] token,
@@ -42,6 +49,8 @@ class Vocab:
     """One vocabulary per field type; species/ability/item/nature share a column each,
     the four move columns share a single move vocabulary."""
     def __init__(self, teams):
+        teams = _with_excluded(teams)
+        self.regulation = None
         cols = defaultdict(set)
         for t in teams:
             f = team_fields(t)
@@ -54,6 +63,19 @@ class Vocab:
             self.itos[k] = vs
             self.stoi[k] = {v: i for i, v in enumerate(vs)}
         self.sizes = {k: len(v) for k, v in self.itos.items()}
+    @classmethod
+    def from_regulation(cls, manifest):
+        """Stable token IDs from an explicit simulator-derived format snapshot."""
+        if isinstance(manifest, (str, Path)):
+            with open(manifest) as f: manifest = json.load(f)
+        if manifest['format'] != 'gen9championsvgc2026regmb':
+            raise ValueError('expected the pinned Regulation M-B vocabulary')
+        obj = cls.__new__(cls)
+        obj.regulation = manifest
+        obj.itos = {k:['[MASK]']+sorted(set(v)) for k,v in manifest['values'].items()}
+        obj.stoi = {k:{v:i for i,v in enumerate(vs)} for k,vs in obj.itos.items()}
+        obj.sizes = {k:len(vs) for k,vs in obj.itos.items()}
+        return obj
     @property
     def source(self):
         return "corpus" if getattr(self, "regulation", None) is None else "Regulation M-B"
@@ -80,6 +102,7 @@ class Legality:
         _p = "/tmp/vgc-pilot/learnset_true.json"
         if _os.path.exists(_p):
             self._true = {k: set(v) for k, v in _json.load(open(_p)).items()}
+        teams = _with_excluded(teams)
         self.corpus_moves = defaultdict(set)
         self.corpus_abils = defaultdict(set)
         self.corpus_items = set()

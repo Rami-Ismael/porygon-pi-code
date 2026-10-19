@@ -1,0 +1,9 @@
+{
+  "format": "gen9championsvgc2026regmb",
+  "members": ["F1_final_medium_regmb_v2", "G2_family_matrix_noprtrain_regmb_v2"],
+  "target_win_rate": 0.5,
+  "guidance": 2,
+  "temperature": 1,
+  "selection": "User-selected baseline: ask 0.5, guidance 2",
+  "results": "diffusion-baseline-f1g2-regmb-v2"
+}

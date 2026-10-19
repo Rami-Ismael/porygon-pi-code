@@ -35,7 +35,7 @@ from corpus import parse_team_text
 hps_generate.SHOWDOWN = Path.home() / ".local/share/vgc-pilot-runtime/validator-913da36"
 
 OUT = L.RES / "lossdown_battle.json"
-MEMBERS = ["F1_final_medium", "G2_family_matrix_noprtrain"]
+MEMBERS = ["F1_final_medium_noheldout", "G2_family_matrix_noprtrain_noheldout"]
 ASKED, GUIDE = [0.3, 0.5, 0.7], [1.0, 2.0, 4.0]
 N, SEED, POLICY, PER_CELL = 64, 2026, 1, 1
 NAN = float("nan")

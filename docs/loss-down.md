@@ -141,9 +141,31 @@ Reproduce: `python lossdata.py`; then
 `python lossdown.py run G2_family_matrix_noprtrain data=family+matrix final=1 mrow=1 sched=16,4,4,1.5,1 d=256 nlayer=6 nhead=8 lr=4e-4 epochs=60`;
 `python lossdown.py exact F1_final_medium G2_family_matrix_noprtrain`.
 
-Not done: plugging the models into the samplers (`asked_vs_got.sample` expects `m.logits(h, c)` per
-column; `Net.logits` returns per field type — a small adapter) and battling their teams. A
-lower loss is a better density model of the loop teams, not evidence of higher win rate.
+Sampler: `lossdown_battle.sample` (fixed-order constrained decode of the mixture, CFG on win rate).
+Battled — see the next section.
+
+## Battles: does the better fit write better teams? (2026-10-08)
+
+`src/lossdown_battle.py`, same protocol as experiment A (asked_vs_got): 64 Showdown-valid teams per
+cell, one battle per (team, top-50 column), BC policy both sides, all 31,360 battles in the matrix
+(origin `lossdown:<cell>`). Win rate vs the top 50; a top-50 team scores 0.531 against the other 49.
+
+| cell | new (F1+G2) | old (asked_vs_got.pt) | diff | valid new/old | species sets new/old |
+|---|---|---|---|---|---|
+| unconditioned | 0.257 ± 0.015 | 0.185 ± 0.014 | +0.072 (3.5σ) | 100% / 97% | 57 / 59 |
+| ask 0.3 g1 | 0.251 ± 0.014 | 0.203 ± 0.015 | +0.048 (2.3σ) | 98% / 97% | 57 / 60 |
+| ask 0.5 g1 | 0.316 ± 0.015 | 0.211 ± 0.013 | +0.105 (5.3σ) | 100% / 98% | 39 / 52 |
+| ask 0.7 g1 | 0.326 ± 0.013 | 0.208 ± 0.014 | +0.118 (6.0σ) | 100% / 89% | 40 / 58 |
+| ask 0.3 g2 | 0.308 ± 0.016 | 0.185 ± 0.012 | +0.123 (6.2σ) | 98% / 98% | 47 / 62 |
+| **ask 0.5 g2** | **0.402 ± 0.013** | 0.282 ± 0.017 | +0.121 (5.6σ) | 97% / 97% | 24 / 43 |
+| ask 0.7 g2 | 0.335 ± 0.016 | 0.240 ± 0.015 | +0.095 (4.3σ) | 97% / 93% | 43 / 54 |
+| ask 0.3 g4 | 0.300 ± 0.013 | 0.191 ± 0.011 | +0.108 (6.4σ) | 100% / 97% | 50 / 60 |
+| ask 0.5 g4 | 0.359 ± 0.014 | 0.322 ± 0.013 | +0.038 (1.9σ) | 100% / 94% | 34 / 26 |
+| ask 0.7 g4 | 0.330 ± 0.019 | 0.319 ± 0.015 | +0.011 (0.4σ) | 97% / 74% | 48 / 30 |
+
+The better density model does write better teams: ahead in all 10 cells, 8 beyond 2σ; best cell 0.402
+vs the old model's best 0.322. Still below a real team (0.531). The gap closes at guidance 4, and the
+best cell is the least varied (24 line-ups in 64). 0 copies of any known team.
 
 ## The matchup matrix as a condition (M1)
 
@@ -170,3 +192,22 @@ model is trained harder on the loop teams; the M1 number (−0.0147) is the one 
 
 Ops: three runs at once filled 24 GB and swapped; evaluation batch is now 500 with
 `torch.mps.empty_cache()`. Run at most two at a time.
+
+## Known limits found later (2026-10-08, Codex regmb v2/v3 audit)
+
+A masked-completion benchmark against an LLM (Codex session, `regmb-vocabulary-retraining.md`,
+`empty-moves-and-mega-stone-diagnosis.md` in the GitHub mirror) found that everything above runs on
+the **corpus vocabulary**: 189 of 347 legal species, 127/200 abilities, 111/148 items, 316/496 moves,
+19/25 natures. Consequences for this page:
+- F1, G2 and every model here can never write the other 158 species; completing a real team that
+  holds an out-of-vocabulary value fails (7/63 inputs representable in that benchmark).
+- The 500-team test set and all training rows are the teams that encode fully under that vocabulary
+  (95,193 HPS teams and ~2.3k others were dropped as "unencodable") — a selection, not the whole
+  regulation.
+- `Vocab.encode` maps unknown values to [MASK] silently; checkpoints here store no token identities.
+- The "species↔Mega Stone" rule in the structured output is a **stone-ownership heuristic**, not
+  legality: Showdown accepts any species holding any stone. It held on all our data, which is why the
+  check above passed.
+The fixes (regulation vocabulary from the pinned simulator, token-identity checkpoints, exact-forme
+stone policy, variable move counts, joint ability×item table) are Codex's `F1/G2_*_regmb_v3`; their
+losses are on a larger output vocabulary and are not interchangeable with the numbers on this page.

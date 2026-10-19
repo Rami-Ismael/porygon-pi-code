@@ -37,7 +37,7 @@ def live_ports(ports=CANDIDATE_PORTS):
 # and a labelling run collided. Correctness, not tidiness.
 RUN = os.getpid()
 
-def score(jobs, battles=24, conc=50, ports=None, quiet=False, opp_schedule=None, seed=None):
+def score(jobs, battles=24, conc=50, ports=None, quiet=False, opp_schedule=None, seed=None, allow_heldout=False):
     """Score a list of (team_file, [opponent_files]) jobs across every live server.
 
     `battles` is now the TOTAL battles for that team; the opponent draws a fresh
@@ -50,7 +50,15 @@ def score(jobs, battles=24, conc=50, ports=None, quiet=False, opp_schedule=None,
 
     Returns {team_file: {"wins": w, "battles": n, "win_rate": r, "se": s}}.
     Work is sharded by team, so each worker owns whole teams and no result is split.
+
+    Ranks 51-100 (heldout.py) are refused as a scored team and as an opponent: no search fitness
+    is ever measured with them. heldout.evaluate is the one caller that passes allow_heldout=True.
     """
+    if not allow_heldout:
+        import heldout
+        heldout.assert_clear_files([f for f, _ in jobs], "a scored candidate")
+        heldout.assert_clear_files([o for _, opps in jobs for o in opps], "an opponent")
+        if opp_schedule: heldout.assert_clear_files(opp_schedule, "an opponent")
     ports = ports or live_ports()
     if not ports:
         raise RuntimeError("no Showdown server is listening; start one on 8123")

@@ -12,12 +12,13 @@ Purpose
 
 Design: docs/matchup-matrix.md.  Run:  python src/matchup_db.py --help
 """
-import argparse, hashlib, json, math, os, random, sqlite3, subprocess, sys, tempfile, time
+import argparse, atexit, hashlib, json, math, os, random, sqlite3, subprocess, sys, tempfile, time, uuid
 from collections import defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import heldout as H            # ranks 51-100: never fitness, never selection (docs/heldout-51-100.md)
 from slot_order import MODE as SLOT_ORDER, POLICY_TAG   # Pokémon order shuffled every battle (src/slot_order.py)
 REPO = HERE.parent
 DEFAULT_DB = Path(os.environ.get("MATCHUP_DB", Path.home() / "vgc-data" / "matchup_regmb.sqlite"))
@@ -27,6 +28,11 @@ POOL_DIR = Path("/tmp/vgc-pilot/vgc-bench/teams/reg_mb")          # VGCPastes Re
 TOP50 = REPO / "results" / "top50_evs.json"
 SHOWDOWN = Path("/tmp/vgc-pilot/vgc-bench/pokemon-showdown")
 POLICY_FILE = Path("/tmp/bc_100.zip")                             # behaviour-cloning policy, both sides
+# Battles run on the fast evaluator unless MATCHUP_BACKEND=legacy (pair_shard.py over live servers).
+FAST_RUNNER_DIR = Path(os.environ.get("MATCHUP_FAST_RUNNER_DIR", Path.home() / "Documents/yakumsi-vault/Personal Project"
+    / "Using Advance method search in the whole search of possible vgc pokemon format to find the right counter to a pokemon team"
+    / "team_completion_pipeline"))
+FAST_EVIDENCE = Path(os.environ.get("MATCHUP_FAST_EVIDENCE", Path.home() / "vgc-data" / "battle-evaluations"))
 STATS = ["HP", "Atk", "Def", "SpA", "SpD", "Spe"]
 NEUTRAL = {"bashful", "docile", "hardy", "quirky", "serious"}
 
@@ -37,6 +43,7 @@ CREATE TABLE IF NOT EXISTS team (
   team_id     INTEGER PRIMARY KEY,
   format_id   TEXT NOT NULL,
   canon_hash  TEXT NOT NULL,              -- sha256 of the canonical paste
+  grid_hash   TEXT,                       -- sha1 of the 48 fields (no Stat Points): heldout.grid_key_text
   paste       TEXT NOT NULL,              -- canonical paste: the exact text that is battled
   species_key TEXT NOT NULL,              -- sorted species ids; identifies the opponent in a battle
   base_key    TEXT NOT NULL,              -- same with base species (fallback attribution)
@@ -156,7 +163,8 @@ def connect(path=DEFAULT_DB):
     con.executescript(SCHEMA)
     con.execute("INSERT OR IGNORE INTO meta VALUES ('format_id', ?)", (FORMAT,))
     con.execute("INSERT OR IGNORE INTO meta VALUES ('schema_version', '1')")
-    con.commit()                  # never leave a write transaction open: it blocks other writers and backup
+    con.commit()
+    H.fill_grid_hash(con)         # databases written before the column existed; also teams a stale writer added                  # never leave a write transaction open: it blocks other writers and backup
     return con
 
 def sha256_file(p, n=16):
@@ -191,12 +199,13 @@ def add_team(con, paste, origin, validator=None):
     row = con.execute("SELECT team_id FROM team WHERE format_id=? AND canon_hash=?", (FORMAT, h)).fetchone()
     if row: return row[0], False
     full, base = species_keys(canon)
+    grid = H.grid_key_text(canon)
     legal = err = None
     if validator is not None:
         err = validator(canon); legal = int(err is None)
     with con:
-        cur = con.execute("INSERT INTO team (format_id,canon_hash,paste,species_key,base_key,legal,legal_error,origin) "
-                          "VALUES (?,?,?,?,?,?,?,?)", (FORMAT, h, canon, full, base, legal, err, origin))
+        cur = con.execute("INSERT INTO team (format_id,canon_hash,paste,species_key,base_key,legal,legal_error,origin,grid_hash) "
+                          "VALUES (?,?,?,?,?,?,?,?,?)", (FORMAT, h, canon, full, base, legal, err, origin, grid))
     return cur.lastrowid, True
 
 def paste_file(con, team_id):
@@ -323,6 +332,32 @@ def run_jobs(con, jobs, seed=None, conc=50, quiet=False):
     if failed: print(f"  WARNING {len(failed)} shard(s) failed: {failed[0][:200]}", flush=True)
     return results, unattributed, secs
 
+_fast = None
+
+def fast_runner():
+    """Six persistent workers, each with a private Showdown server and 24 concurrent battles, same
+    bc_100.zip policy on both sides (team_completion_pipeline/FAST_EVALUATOR_INTEGRATION.md: 1.7x
+    whole-stage, 3.3x once loaded). Started on the first battle, shared by every later ensure()
+    in this process, closed at exit. MATCHUP_FAST_WORKERS / MATCHUP_FAST_CONCURRENCY override."""
+    global _fast
+    if _fast is None or _fast.closed:
+        if str(FAST_RUNNER_DIR) not in sys.path: sys.path.append(str(FAST_RUNNER_DIR))
+        from fast_battle_runner import FastBattleRunner
+        folder = FAST_EVIDENCE / f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+        _fast = FastBattleRunner(folder, workers=int(os.environ.get("MATCHUP_FAST_WORKERS", 6)),
+                                 concurrency=int(os.environ.get("MATCHUP_FAST_CONCURRENCY", 24)),
+                                 runtime=FAST_EVIDENCE / "runtime", slot_order=SLOT_ORDER)
+        atexit.register(_fast.close)
+    return _fast
+
+def default_runner():
+    """The runner ensure() uses when the caller passes none: the fast evaluator, or run_jobs
+    when MATCHUP_BACKEND=legacy."""
+    backend = os.environ.get("MATCHUP_BACKEND", "fast")
+    if backend == "legacy": return run_jobs
+    if backend != "fast": raise ValueError(f"MATCHUP_BACKEND must be fast or legacy, not {backend!r}")
+    return fast_runner()
+
 run_jobs.slot_order = SLOT_ORDER     # pair_shard.py reads the same VGC_SLOT_ORDER
 
 def check_slot_order(con, policy_id, runner):
@@ -337,13 +372,18 @@ def check_slot_order(con, policy_id, runner):
                          f"{'shuffled' if tagged else 'listed'} slot order but this runner uses {mode}; "
                          "use get_policy() / runner.policy_id() for the current order, or set VGC_SLOT_ORDER")
 
-def ensure(con, policy_id, rows, cols, per_cell, seed=None, runner=None, note=None):
+def ensure(con, policy_id, rows, cols, per_cell, seed=None, runner=None, note=None, evaluation=False):
     """The cache entry point: make every (row, col) cell hold >= per_cell battles, running
-    only the deficit. Returns the number of battles actually run (0 when fully cached)."""
+    only the deficit. Returns the number of battles actually run (0 when fully cached).
+    A held-out team (ranks 51-100) as row or column raises HeldoutLeak; only evaluate_final
+    passes evaluation=True."""
+    if not evaluation:
+        bad = H.team_ids(con) & (set(rows) | set(cols))
+        if bad: raise H.HeldoutLeak(f"{len(bad)} held-out team(s) in a battle request: {sorted(bad)[:5]}")
     need = plan(con, policy_id, rows, cols, per_cell)
     if not need: return 0
     jobs = jobs_for(con, need)
-    runner = runner or run_jobs
+    runner = runner or default_runner()
     check_slot_order(con, policy_id, runner)
     results, unattributed, secs = runner(con, jobs, seed=seed)
     record(con, policy_id, results, seconds=secs, seed=seed, note=note, unattributed=unattributed)
@@ -358,9 +398,13 @@ def score_pastes(con, pastes, per_cell=8, set_name="top50", seed=None, origin="s
         with con: ids = [add_team(con, p, origin, val)[0] for p in pastes]
     finally:
         val.close()
-    legal = {t for (t,) in con.execute(f"SELECT team_id FROM team WHERE legal=1 AND team_id IN ({','.join('?' * len(ids))})", ids)}
+    _no_heldout_set(set_name, False)
+    held = H.team_ids(con)                                   # a candidate that is a held-out team is not a candidate
+    legal = {t for (t,) in con.execute(f"SELECT team_id FROM team WHERE legal=1 AND team_id IN ({','.join('?' * len(ids))})", ids)} - held
     ensure(con, policy_id, sorted(legal), set_members(con, set_name), per_cell, seed=seed, note=f"score_pastes:{origin}")
-    return [score(con, policy_id, t, set_name) if t in legal else {"team_id": t, "score": None, "illegal": True} for t in ids]
+    return [score(con, policy_id, t, set_name) if t in legal
+            else {"team_id": t, "score": None, "heldout": True} if t in held
+            else {"team_id": t, "score": None, "illegal": True} for t in ids]
 
 # ---------------------------------------------------------------- reading: scores and labels
 def row_cells(con, policy_id, team, cols):
@@ -374,11 +418,21 @@ def row_cells(con, policy_id, team, cols):
         if r and r[2] > 0: out[c] = (r[0] if team == lo else r[1], r[2])
     return out
 
-def score(con, policy_id, team, set_name="top50"):
+def _no_heldout_set(set_name, evaluation):
+    if set_name == H.SET_NAME and not evaluation:
+        raise H.HeldoutLeak(f"column set {set_name!r} is the held-out evaluation set; use evaluate_final")
+
+def score(con, policy_id, team, set_name="top50", evaluation=False, held=None):
     """A team's objective value: its row averaged over the set's columns (set weights,
-    equal by default), with coverage and standard error. The team's own column is skipped."""
+    equal by default), with coverage and standard error. The team's own column is skipped.
+    Search fitness never sees ranks 51-100: held-out columns are dropped from any set, and
+    scoring a held-out team or the held-out set raises (evaluation=True is evaluate_final's)."""
+    _no_heldout_set(set_name, evaluation)
+    if not evaluation:
+        held = H.team_ids(con) if held is None else held
+        if team in held: raise H.HeldoutLeak(f"team {team} is a held-out team; it has no search fitness")
     members = con.execute("SELECT team_id, weight FROM team_set WHERE set_name=?", (set_name,)).fetchall()
-    cols = {c: w for c, w in members if c != team}
+    cols = {c: w for c, w in members if c != team and (evaluation or c not in held)}
     cells = row_cells(con, policy_id, team, cols)
     if not cells:
         return {"team_id": team, "score": None, "coverage": 0, "columns": len(cols), "battles": 0, "se": None}
@@ -389,17 +443,75 @@ def score(con, policy_id, team, set_name="top50"):
             "battles": sum(n for _, n in cells.values()), "se": math.sqrt(var)}
 
 def labels(con, policy_id, set_name="top50", min_coverage=None):
-    """Team-level surrogate labels: every team with at least one cell against the set."""
-    members = set_members(con, set_name)
+    """Team-level surrogate labels: every team with at least one cell against the set.
+    Held-out teams (ranks 51-100) are never labelled: they are not training data."""
+    _no_heldout_set(set_name, False)
+    held = H.team_ids(con)
+    members = [m for m in set_members(con, set_name) if m not in held]
     min_coverage = len(members) - 1 if min_coverage is None else min_coverage
     rows = [r[0] for r in con.execute(
         "SELECT DISTINCT t FROM (SELECT lo AS t FROM cell WHERE policy_id=? UNION SELECT hi FROM cell WHERE policy_id=?)",
         (policy_id, policy_id))]
     out = []
     for t in rows:
-        s = score(con, policy_id, t, set_name)
+        if t in held: continue
+        s = score(con, policy_id, t, set_name, held=held)
         if s["score"] is not None and s["coverage"] >= min_coverage: out.append(s)
     return out
+
+def purge_heldout(con, dry_run=False):
+    """Delete every matrix entry that involves a held-out team (48-field identity), as row or column:
+    cells, their per-batch contributions, and the team's membership of every column set except the
+    held-out set. Teams and their pastes stay: they are how candidates are recognised and the columns
+    evaluate_final uses. Batches left with no contribution are removed. One transaction.
+    Returns what was (or, with dry_run, would be) deleted."""
+    held = sorted(H.team_ids(con))
+    if not held: return {"teams": 0, "cells": 0, "battles": 0, "contributions": 0, "set_rows": 0, "batches": 0}
+    q = ",".join("?" * len(held))
+    n = lambda sql, *a: con.execute(sql, a or held + held).fetchone()
+    cells = con.execute(f"SELECT COUNT(*), COALESCE(SUM(battles),0) FROM cell WHERE lo IN ({q}) OR hi IN ({q})", held + held).fetchone()
+    contrib = con.execute(f"SELECT COUNT(*) FROM contribution WHERE lo IN ({q}) OR hi IN ({q})", held + held).fetchone()[0]
+    sets = con.execute(f"SELECT COUNT(*) FROM team_set WHERE team_id IN ({q}) AND set_name != ?", held + [H.SET_NAME]).fetchone()[0]
+    out = {"teams": len(held), "cells": cells[0], "battles": cells[1], "contributions": contrib, "set_rows": sets}
+    plan_tables = [t for t in ("plan_cell", "plan_contribution")
+                   if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (t,)).fetchone()]
+    for t in plan_tables:        # the plan matrix (plan_matrix.py) is a matrix of the same teams
+        out[t] = con.execute(f"SELECT COUNT(*) FROM {t} WHERE lo IN ({q}) OR hi IN ({q})", held + held).fetchone()[0]
+    if dry_run: return out
+    with con:
+        touched = [r[0] for r in con.execute(f"SELECT DISTINCT batch_id FROM contribution WHERE lo IN ({q}) OR hi IN ({q})", held + held)]
+        con.execute(f"DELETE FROM contribution WHERE lo IN ({q}) OR hi IN ({q})", held + held)
+        con.execute(f"DELETE FROM cell WHERE lo IN ({q}) OR hi IN ({q})", held + held)
+        con.execute(f"DELETE FROM team_set WHERE team_id IN ({q}) AND set_name != ?", held + [H.SET_NAME])
+        for t in plan_tables:
+            con.execute(f"DELETE FROM {t} WHERE lo IN ({q}) OR hi IN ({q})", held + held)
+        gone = 0
+        for b in touched:
+            if con.execute("SELECT 1 FROM contribution WHERE batch_id=? LIMIT 1", (b,)).fetchone() is None:
+                con.execute("DELETE FROM batch WHERE batch_id=?", (b,)); gone += 1
+    out["batches"] = gone
+    return out
+
+def seed_heldout(con, validator=None):
+    """Build the 'heldout51_100' column set: the 50 teams of ranks 51-100. Idempotent. Returns team ids."""
+    with con:
+        got = [add_team(con, Path(f).read_text(), "vgcpastes", validator)[0] for f in H.files()]
+        con.execute("DELETE FROM team_set WHERE set_name=?", (H.SET_NAME,))
+        for t in got:
+            con.execute("INSERT INTO team_set VALUES (?, ?, 1) ON CONFLICT (set_name, team_id) DO UPDATE SET weight = weight + 1",
+                        (H.SET_NAME, t))
+    return got
+
+def evaluate_final(con, policy_id, teams, per_cell=8, seed=None, runner=None, note="heldout evaluation"):
+    """The only place ranks 51-100 are battled or read: score the FINAL selected team(s) against
+    the 50 held-out teams, after selection. teams: team ids. Returns one score dict per team.
+    A held-out team cannot be evaluated against itself or its set."""
+    cols = seed_heldout(con)
+    held = H.team_ids(con)
+    bad = held & set(teams)
+    if bad: raise H.HeldoutLeak(f"{len(bad)} of the teams to evaluate are held-out teams")
+    ensure(con, policy_id, sorted(set(teams)), cols, per_cell, seed=seed, runner=runner, note=note, evaluation=True)
+    return [score(con, policy_id, t, H.SET_NAME, evaluation=True) for t in teams]
 
 def stats(con):
     q = lambda sql, *a: con.execute(sql, a).fetchone()[0]
@@ -433,6 +545,7 @@ def seed(con, pool_dir=POOL_DIR, top50=TOP50, validate=True):
                 else: missing.append(i)
     finally:
         if val: val.close()
+    seed_heldout(con, None)
     return {"new_teams": made, "duplicate_files": dup, "top50_missing": missing, **stats(con)}
 
 # ---------------------------------------------------------------- cost of coverage
@@ -491,6 +604,12 @@ def main(argv=None):
     lb.add_argument("--set", default="top50"); lb.add_argument("--out", required=True)
     lb.add_argument("--min-coverage", type=int)
     sub.add_parser("stats")
+    sub.add_parser("seed-heldout", help="build the held-out evaluation set (ranks 51-100)")
+    pg = sub.add_parser("purge-heldout", help="delete every matrix entry that involves a held-out team")
+    pg.add_argument("--dry-run", action="store_true")
+    ef = sub.add_parser("evaluate-final", help="score the final selected team ids against ranks 51-100")
+    ef.add_argument("--teams", required=True); ef.add_argument("--per-cell", type=int, default=8)
+    ef.add_argument("--seed", type=int, default=101)
     c = sub.add_parser("cost", help="storage and simulation cost of coverage")
     c.add_argument("--rate", type=float, default=55.0, help="measured battles/sec across all servers")
     bk = sub.add_parser("backup", help="consistent snapshot (SQLite backup API)"); bk.add_argument("--out", required=True)
@@ -512,6 +631,13 @@ def main(argv=None):
             for r in labels(con, pid, a.set, a.min_coverage): f.write(json.dumps(r) + "\n")
     elif a.cmd == "stats":
         print(json.dumps(stats(con), indent=1))
+    elif a.cmd == "purge-heldout":
+        print(json.dumps(purge_heldout(con, a.dry_run), indent=1))
+    elif a.cmd == "seed-heldout":
+        print(len(seed_heldout(con)), "held-out teams in set", H.SET_NAME)
+    elif a.cmd == "evaluate-final":
+        pid = get_policy(con); ts = [int(x) for x in a.teams.split(",")]
+        for r in evaluate_final(con, pid, ts, a.per_cell, seed=a.seed): print(json.dumps(r))
     elif a.cmd == "cost":
         n_seed = con.execute("SELECT COUNT(*) FROM team WHERE legal=1").fetchone()[0] or 1
         counts = Path("/Users/ramiismael/Documents/yakumsi-vault/Personal Project/Using Advance method search in the "

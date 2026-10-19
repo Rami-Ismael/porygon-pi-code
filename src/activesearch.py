@@ -73,12 +73,15 @@ REAL_MEDIAN = 0.458     # measured 2026-08-27; a reporting threshold only
 
 
 # --------------------------------------------------------------- corpus + tables
-def load_corpus_files():
-    """(path, parsed team) for every 6-slot real team in the Reg M-B corpus."""
+def load_corpus_files(include_heldout=False):
+    """(path, parsed team) for every 6-slot real team in the Reg M-B corpus, without ranks 51-100
+    (heldout.py, 48-field identity). Vocab and Legality read the excluded teams back in themselves."""
+    import heldout
+    held = set() if include_heldout else heldout.identities()
     out = []
     for f in sorted(CORPUS_DIR.rglob("*.txt")):
         t = parse_team(f)
-        if len(t) == 6:
+        if len(t) == 6 and heldout.grid_key_team(t) not in held:
             out.append((str(f), t))
     return out
 

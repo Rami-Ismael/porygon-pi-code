@@ -146,11 +146,16 @@ def parse_team_text(text):
     if cur: slots.append(cur)
     return slots
 
-def load_corpus():
+def load_corpus(include_heldout=False):
+    """(teams, file names) of the 6-slot pool teams, without ranks 51-100 (heldout.py, 48-field identity).
+    Vocabulary and Legality read the excluded teams back in, so token ids and rule tables do not move.
+    include_heldout=True returns the whole pool (only for building those tables)."""
+    import heldout
+    held = set() if include_heldout else heldout.identities()
     teams, names = [], []
     for f in sorted(TEAMS.rglob("*.txt")):   # rglob: include featured/
         t = parse_team(f)
-        if len(t) == 6:
+        if len(t) == 6 and heldout.grid_key_team(t) not in held:
             teams.append(t); names.append(f.name)
     return teams, names
 

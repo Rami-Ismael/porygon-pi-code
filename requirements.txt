@@ -1,2 +1,3 @@
 torch>=2.0
 numpy>=1.24
+dspy==3.4.1  # DSPy structure experiment only; the version is frozen into its manifests

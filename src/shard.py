@@ -38,7 +38,8 @@ async def score_one(pol, team, opps, n, conc, port, opp_schedule=None, seed=None
     srv = ServerConfiguration(f"ws://localhost:{port}/showdown/websocket",
                               "https://play.pokemonshowdown.com/action.php?")
     kw = dict(server_configuration=srv, battle_format=format_map["mb"], log_level=40,
-              max_concurrent_battles=conc, accept_open_team_sheet=True, open_timeout=None)
+              max_concurrent_battles=conc, accept_open_team_sheet=True, open_timeout=None,
+              ping_timeout=None)
     tag = os.urandom(4).hex()
     a = BatchPolicyPlayer(policy=pol, account_configuration=AccountConfiguration(f"a{tag}", None),
                           team=ShuffledTeamBuilder(1, None, "mb", custom_team_paths=[Path(team)], order_seed=seed), **kw)
@@ -50,17 +51,36 @@ async def score_one(pol, team, opps, n, conc, port, opp_schedule=None, seed=None
         tb = ShuffledTeamBuilder(1, None, "mb", custom_team_paths=[Path(o) for o in opps], order_seed=opp_seed)
     b = BatchPolicyPlayer(policy=pol, account_configuration=AccountConfiguration(f"b{tag}", None),
                           team=tb, **kw)
-    await a.battle_against(b, n_battles=n)
+    await finish_or_disconnect(a, b, n)
     w = sum(1 for x in a.battles.values() if x.won)
     f = a.n_finished_battles
     m = margin_of(a.battles.values())
     # mean battle length in turns (added 2026-09-30 for the MAP-Elites measure; extra key, nothing else changes)
     tl = [x.turn for x in a.battles.values() if x.finished]
     t = round(sum(tl) / len(tl), 3) if tl else None
-    for p in (a, b):
-        try: await p.ps_client.stop_listening()
-        except Exception: pass
     return w, f, m, t
+
+
+async def finish_or_disconnect(a, b, n):
+    """Preserve partial results if poke-env's listener silently stops."""
+    battle_task = asyncio.create_task(a.battle_against(b, n_battles=n))
+    listeners = [asyncio.wrap_future(p.ps_client._listening_coroutine) for p in (a, b)]
+    error = None
+    try:
+        await asyncio.wait([battle_task, *listeners], return_when=asyncio.FIRST_COMPLETED)
+        if battle_task.done():
+            await battle_task
+        else:
+            error = 'Battle connection closed before job completion; no retry attempted'
+    finally:
+        if not battle_task.done():
+            battle_task.cancel()
+            await asyncio.gather(battle_task, return_exceptions=True)
+        for p in (a, b):
+            try: await p.ps_client.stop_listening()
+            except Exception: pass
+        await asyncio.gather(*listeners, return_exceptions=True)
+    return error
 
 
 def margin_of(battles):
@@ -96,6 +116,8 @@ def main():
         res[team] = {"wins": w, "battles": n, "win_rate": round(r, 4),
                      "se": round((r * (1 - r) / max(n, 1)) ** .5, 4), "margin": m, "turns": t}
         json.dump(res, open(out, "w"))
+        if n != nb:
+            return  # Preserve partial results for the caller's incomplete-stage guard.
     json.dump(res, open(out, "w"))
 
 if __name__ == "__main__":

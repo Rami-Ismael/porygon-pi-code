@@ -20,7 +20,7 @@ from corpus import parse_team_text
 from hps_generate import Validator
 
 REPO = Path(__file__).resolve().parents[1]
-CKPT = REPO / "results" / "temperature_p0.pt"
+CKPT = REPO / "results" / "temperature_p0_noheldout.pt"
 OUT = REPO / "results" / "mdts_experiment.json"
 LEVELS = [0, 6, 18, 42, 48]           # decode steps revealed at tree depth 0..4 (D.ORDER stages)
 BR, J, OMEGA = 5, 5, 1.0

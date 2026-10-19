@@ -26,7 +26,7 @@ from hps_generate import Validator
 A.pool.REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
 MDB.SHOWDOWN = hps_generate.SHOWDOWN
 REPO = Path("/Users/ramiismael/Documents/code/vgc-team-generator-pilot")
-A.P0_CKPT = str(REPO / "results/temperature_p0.pt")         # shared p0 (the original is gone)
+A.P0_CKPT = str(REPO / "results/temperature_p0_noheldout.pt")         # shared p0 (the original is gone)
 OUT = REPO / "results/redundancy_loop.json"
 WORK = Path("/tmp/vgc-pilot/redundancy")
 ARMS = {"cut": 0.0, "mmr30": 0.30, "mmr60": 0.60}   # 0.10 dropped before any battle: near no-op (see doc amendment)

@@ -13,7 +13,12 @@ sys.path.insert(0,str(ROOT/'src'))
 import matchup_db as M
 import smoothness_db as D
 
-PILOT=ROOT/'results/smoothness_pilot'
+# The frozen manifests pin their inputs (teams/, opponents/) by absolute path and hash, and
+# every result is keyed by the manifest's own hash, so the study is read where it was run
+# when this checkout has no results/ (e.g. the monorepo mirror).
+RUN_HOME=Path.home()/'Documents/code/vgc-team-generator-pilot/results'
+RESULTS=ROOT/'results' if (ROOT/'results/smoothness_pilot').exists() else RUN_HOME
+PILOT=RESULTS/'smoothness_pilot'
 VISUAL=Path('/Users/ramiismael/Documents/yakumsi-vault/Personal Project/Using Advance method search in the whole search of possible vgc pokemon format to find the right counter to a pokemon team/Blog/visuals/smoothness/data.js')
 
 class Persistence(unittest.TestCase):
@@ -103,7 +108,7 @@ class Persistence(unittest.TestCase):
 
     def test_member_extension_reuses_baselines_and_preserves_primary_summary(self):
         before=D.snapshot(self.con,self.run)['summary']
-        result=D.import_run(self.con,ROOT/'results/smoothness_member_coverage')
+        result=D.import_run(self.con,RESULTS/'smoothness_member_coverage')
         self.assertEqual(result['new_panels'],102)
         with patch.object(Path,'read_text',side_effect=AssertionError('export touched source files')):
             view=D.snapshot(self.con,self.run)
@@ -116,7 +121,7 @@ class Persistence(unittest.TestCase):
             self.assertEqual({e['edit']['slot'] for e in team['edges'] if e.get('edit')},set(range(6)))
             for edge in team['edges']:
                 self.assertAlmostEqual(sum(p['wins'] for p in edge['panels'])/150-team['original'],edge['delta'])
-        again=D.import_run(self.con,ROOT/'results/smoothness_member_coverage')
+        again=D.import_run(self.con,RESULTS/'smoothness_member_coverage')
         self.assertEqual(again['new_panels'],0)
 
 if __name__=='__main__':

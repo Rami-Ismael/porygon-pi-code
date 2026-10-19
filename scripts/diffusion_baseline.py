@@ -1,0 +1,198 @@
+"""Strict F1/G2 completion comparison on the frozen Ling pilot; no OOV substitution."""
+import argparse
+import copy
+import fcntl
+import hashlib
+import json
+from pathlib import Path
+import time
+import llm_baseline as B
+
+MEMBERS = ["F1_final_medium_noheldout", "G2_family_matrix_noprtrain_noheldout"]
+
+
+def encode_context(team, paths, vocab):
+    """Never inspect a masked value, including to determine its move rank."""
+    from corpus import norm
+    context = B.masked(team, paths)
+    values, mapping, missing = [], [], []
+    for s, slot in enumerate(context):
+        slot = slot or dict(species=None, ability=None, item=None, nature=None, moves=[None]*4)
+        moves = sorted(range(4), key=lambda m: (slot['moves'][m] is None, norm(slot['moves'][m] or '')))
+        fields = [('species',), ('ability',), ('item',)] + [('moves', m) for m in moves] + [('nature',)]
+        for field in fields:
+            path = [s, *field]
+            value = slot[field[0]] if len(field) == 1 else slot['moves'][field[1]]
+            key = 'move' if field[0] == 'moves' else field[0]
+            token = 0 if value is None else vocab.stoi[key].get(norm(value))
+            if token is None:
+                missing.append(dict(path=path, value=value))
+                token = 0
+            values.append(token)
+            mapping.append(path)
+    return values, mapping, missing
+
+
+def generate(args):
+    import numpy as np
+    import torch
+    import lossdown as L
+    import asked_vs_got as X
+    import diffusion as D
+    from corpus import norm
+    torch.set_num_threads(1)
+    L.DEV = D.DEV = torch.device('cpu')
+    corpus, vocab, _, look, spreads = X.setup()
+    first = torch.load(L.CK/(args.members[0]+'.pt'),map_location='cpu')
+    if first.get('regulation'):
+        from encode import Vocab
+        vocab = Vocab.from_regulation(first['regulation'])
+        look.update(vocab.regulation['names'])
+    tables = L.Tables(vocab, corpus)
+    # Partial move sets have no known rank for masked moves. Preserve known values,
+    # disable alphabetic rank constraints and enforce distinctness explicitly.
+    rules = ('clause', 'compat')
+    funcs = []
+    config = dict(members=args.members, seed=args.manifest['seed'], attempts=1,
+                  target_win_rate=.5, guidance=2, temperature=1, rules=rules,
+                  stat_points='same-species corpus spread; random legal spread if species has no corpus spread; not neural prediction',
+                  input='strict known categorical context; no Stat Points or opponent-paste input',
+                  masked_move_order='known sorted first; blanks last; no hidden-value ranks',
+                  vocab_sha256=B.digest(vocab.itos), corpus_sha256=B.digest(corpus), checkpoints={})
+    for name in args.members:
+        net, cfg, _ = L.load_net(name, vocab)
+        funcs.append(L.logprobs_fn(net, tables, rules))
+        config['checkpoints'][name] = dict(sha256=hashlib.sha256((L.CK / (name+'.pt')).read_bytes()).hexdigest(), cfg=cfg)
+    config['source_sha256'] = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in
+                              [Path(__file__), B.ROOT/'src/lossdown.py', B.ROOT/'src/encode.py']}
+    config_path = args.output/'generation-config.json'
+    if config_path.exists() and json.loads(config_path.read_text()) != json.loads(json.dumps(config)):
+        raise ValueError('generation configuration changed; use a fresh output directory')
+    B.save(config_path, config)
+    f = L.ensemble_fn(funcs)
+    h, _ = B.runtime()
+    validator = h.Validator()
+    try:
+        for i, trial in enumerate(args.manifest['trials']):
+            dest = args.output/'completions'/(trial['id']+'.json')
+            if dest.exists(): continue
+            start = args.manifest['starts'][trial['start']]
+            vals, mapping, missing = encode_context(start, trial['paths'], vocab)
+            row = dict(trial=trial['id'], valid=False, supported=not missing, missing=missing)
+            if missing:
+                row['error'] = 'unmasked categorical value outside checkpoint vocabulary'
+                B.save(dest, row)
+                continue
+            t0 = time.perf_counter()
+            torch.manual_seed(args.manifest['seed']+i)
+            rng = np.random.default_rng(args.manifest['seed']+i)
+            try:
+                x = torch.tensor([vals], dtype=torch.long, device=L.DEV)
+                todo = [c for c in D.ORDER if vals[c] == 0]
+                with torch.no_grad():
+                    for step, col in enumerate(todo):
+                        t = torch.tensor([(len(todo)-step)/48], device=L.DEV)
+                        w, wn = torch.tensor([.5], device=L.DEV), torch.tensor([float('nan')], device=L.DEV)
+                        key = L.KEY_OF_COL[col]; j = L.COLS_BY_KEY[key].index(col)
+                        logits = 2*f(x,t,w)[key][:,j] - f(x,t,wn)[key][:,j]
+                        ok = tables.allowed(x, rules)[key][:,j].clone()
+                        ok[:,0] = False
+                        if key == 'move':
+                            for other in range(col//8*8+3, col//8*8+7):
+                                if x[0,other]: ok[0,x[0,other]] = False
+                        if not ok.any(): raise ValueError('no legal token under clamped context')
+                        x[:,col] = torch.multinomial(torch.softmax(logits.masked_fill(~ok,-float('inf')), -1),1).squeeze(1)
+                decoded = copy.deepcopy(start)
+                for col in todo:
+                    value = vocab.decode_field(col, int(x[0,col]))
+                    B.set_path(decoded, mapping[col], look.get(value, value))
+                for path in trial['paths']:
+                    if len(path) == 1 or path[1] == 'evs':
+                        s = path[0]; choices = spreads.get(norm(decoded[s]['species']))
+                        raw = choices[int(rng.integers(len(choices)))] if choices else h.sample_spread(rng)
+                        decoded[s]['evs'] = {k:int(raw.get(k,0)) for k in B.STATS}
+                B.validate_shape(decoded)
+                if B.masked(decoded,trial['paths']) != B.masked(start,trial['paths']):
+                    raise ValueError('unmasked field changed')
+                error = validator(B.paste(decoded,h))
+                row.update(team=decoded, valid=error is None, error=error)
+            except ValueError as exc:
+                row['error'] = str(exc)
+            row['seconds'] = time.perf_counter()-t0
+            B.save(dest,row)
+            print(trial['id'], row['valid'], row.get('error'), flush=True)
+    finally:
+        validator.close()
+
+
+def report(args):
+    from collections import Counter
+    m = args.manifest
+    generation = json.loads((args.output/'generation-config.json').read_text())
+    rows = {t['id']:json.loads((args.output/'completions'/(t['id']+'.json')).read_text()) for t in m['trials']}
+    labels = {p.stem:json.loads(p.read_text()) for p in (args.output/'labels').glob('*.json')}
+    baseline = {p.stem:json.loads(p.read_text()) for p in (args.baseline/'labels').glob('*.json')}
+    supported = sum(r['supported'] for r in rows.values()); valid = sum(r['valid'] for r in rows.values())
+    lines = ['# Diffusion versus Ling: frozen masked-completion pilot', '',
+             'Models: '+', '.join(generation['members'])+'. This comparison reuses all 63 tasks, three random legal Champions M-B starting teams, masks and opponent panels from the Ling pilot.', '',
+             f'**Coverage: diffusion supports {supported}/63 tasks and produces {valid}/63 legal completions. Ling produced 27/63 legal completions.** Unsupported tasks count as completion failures; they are not assigned invented battle losses.', '',
+             'One candidate per task, no retries or repairs. Diffusion uses target win rate 0.5, CFG 2, temperature 1, fixed-order inpainting. Known categorical fields are clamped. Missing vocabulary entries are rejected rather than replaced with masks. Partial move ranks cannot be inferred from hidden values: known moves are sorted, masked moves appended, alphabetical constraints disabled, and distinctness enforced.', '',
+             'Both battle sides use the same frozen behaviour-cloning policy, including learned team preview. Each candidate plays the frozen 50-battle schedule over 49 opponent teams. Runtime fingerprints and the exact-panel cache are shared with the original baseline. Policy RNG seeds match; Showdown RNG is not controlled.', '',
+             'Input limitations: diffusion cannot read opponent pastes or Stat Points; its win-rate condition is a scalar. Stat Point fills use same-species corpus spreads, with a random legal spread for species absent from the corpus. These are system comparisons, not equal-input neural architecture comparisons. There is no search or surrogate reranking in this arm.', '',
+             '| Task | Diffusion coverage | Legal diffusion | Legal Ling |', '|---|---:|---:|---:|']
+    for task in B.GRID:
+        trials = [t for t in m['trials'] if t['task']==task]
+        llm = sum(json.loads((args.baseline/'completions'/(t['id']+'.json')).read_text())['valid'] for t in trials)
+        lines.append(f"| {task} | {sum(rows[t['id']]['supported'] for t in trials)}/9 | {sum(rows[t['id']]['valid'] for t in trials)}/9 | {llm}/9 |")
+    lines += ['', 'Battle win rates below are conditional on legal outputs. Only rows with both model scores are paired comparisons.', '',
+              '| Task | Original | Random fill | Ling | Diffusion | Δ diffusion − Ling (pp) |', '|---|---:|---:|---:|---:|---:|']
+    pairs = []
+    for t in m['trials']:
+        tid = t['id']; d = labels.get('diffusion-'+tid)
+        if not rows[tid]['supported']: continue
+        a = baseline.get('llm-'+tid)
+        score = lambda r: f"{r['wins']/r['battles']:.1%}" if r else '—'
+        delta = 100*(d['wins']/d['battles']-a['wins']/a['battles']) if d and a else None
+        if delta is not None: pairs.append(dict(trial=tid,start=t['start'],delta_pp=delta))
+        lines.append(f"| {tid} | {score(baseline.get('start-'+str(t['start'])))} | {score(baseline.get('random-'+tid))} | {score(a)} | {score(d)} | {f'{delta:+.1f}' if delta is not None else '—'} |")
+    lines += ['', f'{len(pairs)} jointly legal, scored tasks. With only three starting teams, this pilot cannot establish which model is better across the requested task distribution.', '',
+              'Next experiment: expand the frozen cohort and keep development selection separate from final battle evaluation. Report coverage and legality separately from conditional battle gains. Stat Points still need a learned representation before calling this a fully neural completion system.', '', 'Unsupported values:', '']
+    if pairs:
+        starts=sorted({r['start'] for r in pairs})
+        delta=sum(sum(r['delta_pp'] for r in pairs if r['start']==s)/sum(r['start']==s for r in pairs) for s in starts)/len(starts)
+        lines += [f'Equal-start-weighted diffusion minus Ling on jointly scored tasks: {delta:+.2f} percentage points. This is descriptive, not a significance claim.','']
+    errors = Counter(str((e['path'][1], e['value'])) for r in rows.values() for e in r.get('missing',[]))
+    lines += [f'- {value}: present in {n} unsupported task contexts.' for value,n in errors.items()]
+    for tid,r in rows.items():
+        if r['supported'] and not r['valid']: lines.append(f"- {tid}: {r['error']}")
+    text = '\n'.join(lines)+'\n'
+    (args.output/'report.md').write_text(text)
+    (B.ROOT/'docs/diffusion-baseline-comparison.md').write_text(text)
+    B.save(args.output/'summary.json',dict(supported=supported,legal=valid,scored=len(labels),pairs=pairs))
+    print(json.dumps(dict(supported=supported,legal=valid,scored=len(labels),pairs=pairs)))
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('command',choices=['generate','battle','report'])
+    p.add_argument('--baseline',type=Path,default=B.ROOT/'results/llm-baseline-instant-pilot')
+    p.add_argument('--output',type=Path,default=B.ROOT/'results/diffusion-baseline-f1g2-strict')
+    p.add_argument('--members',nargs='+',default=MEMBERS)
+    args = p.parse_args(); args.output=args.output.resolve(); args.baseline=args.baseline.resolve()
+    args.output.mkdir(parents=True,exist_ok=True)
+    args.manifest=json.loads((args.baseline/'manifest.json').read_text())
+    dest=args.output/'manifest.json'
+    if dest.exists() and json.loads(dest.read_text()) != args.manifest: raise ValueError('frozen manifest changed')
+    B.save(dest,args.manifest)
+    with (args.output/'.lock').open('w') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        if args.command=='battle':
+            candidates=[]
+            for path in sorted((args.output/'completions').glob('*.json')):
+                row=json.loads(path.read_text())
+                if row['valid']: candidates.append(('diffusion-'+row['trial'],row['team']))
+            B.battle(args,candidates_override=candidates)
+        else: globals()[args.command](args)
+
+
+if __name__=='__main__': main()
