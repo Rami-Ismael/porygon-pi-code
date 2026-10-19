@@ -33,8 +33,7 @@ async def score_one(pol, team, opps, n, conc, port, opp_schedule=None, seed=None
     if seed is not None:
         # per-candidate reseed: opponent draws and policy action sampling start
         # from the same state for every candidate (battles diverge after that)
-        import numpy as _np
-        random.seed(seed); torch.manual_seed(seed); _np.random.seed(seed)
+        random.seed(seed); torch.manual_seed(seed)
     srv = ServerConfiguration(f"ws://localhost:{port}/showdown/websocket",
                               "https://play.pokemonshowdown.com/action.php?")
     kw = dict(server_configuration=srv, battle_format=format_map["mb"], log_level=40,

@@ -64,7 +64,7 @@ def build_lookup(teams):
 def main():
     n_per_arm = int(sys.argv[1]) if len(sys.argv) > 1 else 24
     seed = int(sys.argv[2]) if len(sys.argv) > 2 else 0
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
 
     teams, names = load_corpus()

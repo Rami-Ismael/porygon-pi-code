@@ -13,6 +13,8 @@ import json, random
 from pathlib import Path
 from collections import defaultdict
 import numpy as np
+from beartype import beartype
+from jaxtyping import Int64, jaxtyped
 from corpus import (load_corpus, norm, dex_entry, legal_moves, legal_abilities,
                     ITEM_NAMES, MOVE_NAMES, STATS, NATURES)
 
@@ -82,7 +84,8 @@ class Vocab:
     def key(self, col):
         k = FIELDS[col % NF]
         return "move" if k.startswith("m") and k != "nature" else k
-    def encode(self, team):
+    @jaxtyped(typechecker=beartype)
+    def encode(self, team) -> Int64[np.ndarray, "fields"]:
         f = team_fields(team)
         return np.array(strict_ids(self.stoi, [(self.key(i), v) for i, v in enumerate(f)], self.source),
                         dtype=np.int64)

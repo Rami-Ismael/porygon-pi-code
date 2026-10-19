@@ -39,6 +39,7 @@ from encode import NF, NSLOT, team_fields
 from corpus import parse_team_text
 from hps_generate import Validator
 from hps_eval import build_decode_tables, row_to_paste
+from checkpoints import load_checkpoint
 
 DEV = H.DEV
 COLS = D.COLS
@@ -110,7 +111,7 @@ class Ctx:
 
 def load_model_at(ctx, g):
     m = H.TeamDiffusionHPS(ctx.V).to(DEV)
-    m.load_state_dict(torch.load(ckpt_path(g), map_location=DEV)["sd"]); m.eval()
+    m.load_state_dict(load_checkpoint(ckpt_path(g), map_location=DEV)["sd"]); m.eval()
     return m
 
 def admitted_rows(up_to=None):
@@ -329,7 +330,7 @@ def retrain(ctx, g, epochs=30, seed=0, batch=256, cap=0.5):
     admitted generation up to g, synthetic capped at `cap` x real rows."""
     import torch.nn as nn
     import random as _random
-    _random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    _random.seed(seed); torch.manual_seed(seed)
     keep = np.setdiff1d(np.arange(len(ctx.X)), ctx.holdout)
     n_real = len(keep)
     Xs, Ws = [ctx.X[keep]], [ctx.W[keep]]

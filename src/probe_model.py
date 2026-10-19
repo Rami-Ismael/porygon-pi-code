@@ -5,13 +5,14 @@ from corpus import load_corpus
 from encode import Vocab, Legality, NF, NSLOT
 from model import MaskedFieldModel, resample_fields
 from pilot import evaluate, memorization_stats, set_seed, COLS
+from checkpoints import load_checkpoint
 DEV="mps" if torch.backends.mps.is_available() else "cpu"
 set_seed(0); rng=np.random.default_rng(0)
 teams,_=load_corpus(); teams=[t for t in teams if len(t)==6]
 V,L=Vocab(teams),Legality(teams)
 X=np.stack([V.encode(t) for t in teams]); idx=rng.permutation(len(X)); nt=int(len(X)*.15)
 Xte,Xtr=X[idx[:nt]],X[idx[nt:]]
-model=MaskedFieldModel(V).to(DEV); model.load_state_dict(torch.load("/tmp/vgc-pilot/probe_model.pt")); model.eval()
+model=MaskedFieldModel(V).to(DEV); model.load_state_dict(load_checkpoint("/tmp/vgc-pilot/probe_model.pt")); model.eval()
 
 def recanon(R):
     out=R.copy()

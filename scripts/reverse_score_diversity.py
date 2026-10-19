@@ -21,6 +21,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from signed_score_guidance import sample_direction, SignedGuide
+from checkpoints import load_checkpoint
 
 ARMS = ("normal", "none", "reverse")
 PRIMARY = "distinct_species_sets"
@@ -124,7 +125,7 @@ class Engine:
         self.F, self.coef = GG.fit_ridge(teams, y, self.corpus)
         self.G = GG.Guide(self.F, self.coef, self.V, D.DEV)
         self.model = GG.H.TeamDiffusionHPS(self.V).to(D.DEV)
-        self.model.load_state_dict(torch.load(args.checkpoint, map_location=D.DEV)["sd"])
+        self.model.load_state_dict(load_checkpoint(args.checkpoint, map_location=D.DEV)["sd"])
         self.model.eval()
         self.corpus_sets = [A.species_set(t) for t in self.corpus]
         os.environ["PATH"] = str(args.node.parent) + os.pathsep + os.environ.get("PATH", "")

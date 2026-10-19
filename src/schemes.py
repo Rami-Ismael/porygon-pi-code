@@ -692,7 +692,7 @@ def main():
     if a.smoke: per, battles, cap, batch = 3, 2, 24, 8
     names = set(a.only.split(",")) if a.only else {n for n, _ in ARMS}
 
-    torch.manual_seed(0); np.random.seed(0); random.seed(0)
+    torch.manual_seed(0); random.seed(0)
     model, V, L, corpus, labelled = W.load_model()
     C = D.Constraints(V, L); A = Arc(C, V)
     look, spreads = {}, defaultdict(list)

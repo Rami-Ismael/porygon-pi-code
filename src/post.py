@@ -4,6 +4,7 @@ from corpus import load_corpus
 from encode import Vocab, Legality, team_fields, NF, NSLOT
 from model import MaskedFieldModel
 from pilot import evaluate, memorization_stats, op_uniform, op_marginal, COLS, set_seed
+from checkpoints import load_checkpoint
 DEV="mps" if torch.backends.mps.is_available() else "cpu"
 set_seed(0); rng=np.random.default_rng(0)
 teams,_=load_corpus(); teams=[t for t in teams if len(t)==6]
@@ -15,7 +16,7 @@ Xte,Xtr=X[idx[:nt]],X[idx[nt:]]
 colvals=defaultdict(list)
 for c in range(COLS): colvals[V.key(c)]+=list(Xtr[:,c])
 colvals={k:np.array(v) for k,v in colvals.items()}
-m=MaskedFieldModel(V).to(DEV); m.load_state_dict(torch.load("/tmp/vgc-pilot/ck.pt")["sd"]); m.eval()
+m=MaskedFieldModel(V).to(DEV); m.load_state_dict(load_checkpoint("/tmp/vgc-pilot/ck.pt")["sd"]); m.eval()
 src_i=rng.integers(0,len(Xtr),256); X_src=Xtr[src_i]
 cols=[list(rng.choice(COLS,3,replace=False)) for _ in range(256)]
 _=op_uniform(X_src,cols,V,rng); _=op_marginal(X_src,cols,V,rng,colvals)

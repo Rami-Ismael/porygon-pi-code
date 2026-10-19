@@ -28,7 +28,7 @@ DEV = "mps" if torch.backends.mps.is_available() else "cpu"
 COLS = NSLOT * NF
 
 def set_seed(s):
-    random.seed(s); np.random.seed(s); torch.manual_seed(s)
+    random.seed(s); torch.manual_seed(s)
 
 def hamming(a, B):
     return (a[None, :] != B).sum(1)

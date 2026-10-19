@@ -40,6 +40,7 @@ from encode import Vocab, Legality, NF, NSLOT
 from loop import PMI, opponents
 from propose import Validator
 from wrdiffusion import parse_team
+from checkpoints import load_checkpoint
 
 DEV = W.DEV
 OUT = "/tmp/vgc-pilot/brackets_results.json"
@@ -84,7 +85,7 @@ def load_pool(kind):
 
 
 def train(V, teams, wrs, balanced, seed=0):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     X = np.stack([V.encode(t) for t in teams])
     Y = np.array([D.style_of(t) for t in teams])
     B = np.array([W.wr_bin(w) for w in wrs])
@@ -99,7 +100,7 @@ def train(V, teams, wrs, balanced, seed=0):
     m = W.TeamDiffusionWR(V).to(DEV)
     # filterrate.py's protocol: fine-tune the shipped checkpoint. The win-rate embedding
     # is re-initialised when the bin count differs (8-bin arms); everything else loads.
-    ck = torch.load(INIT, map_location=DEV)
+    ck = load_checkpoint(INIT, map_location=DEV)
     sd = {k: v for k, v in ck["sd"].items() if not k.startswith("wr.")}
     missing, unexpected = m.load_state_dict(sd, strict=False)
     if any(not k.startswith("wr.") for k in missing) or unexpected:

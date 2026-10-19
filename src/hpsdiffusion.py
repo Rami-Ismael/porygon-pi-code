@@ -18,6 +18,7 @@ import argparse, json, random
 from pathlib import Path
 import numpy as np, torch
 import torch.nn as nn, torch.nn.functional as F
+from checkpoints import load_checkpoint
 from corpus import parse_team_text, norm, STATS
 from encode import Vocab, Legality, NF, NSLOT
 import diffusion as D
@@ -113,7 +114,7 @@ def build_vocab(teams):
     return Vocab(teams), Legality(teams)
 
 def train(epochs=30, seed=0, batch=256, init_from=""):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     teams, W = load_hps()
     V, L = build_vocab(teams)
     X = np.stack([V.encode(t) for t in teams])
@@ -122,7 +123,7 @@ def train(epochs=30, seed=0, batch=256, init_from=""):
     tr, te = idx[nte:], idx[:nte]
     model = TeamDiffusionHPS(V).to(DEV)
     if init_from:
-        sd = torch.load(init_from, map_location=DEV)["sd"]
+        sd = load_checkpoint(init_from, map_location=DEV)["sd"]
         own = model.state_dict()
         drop = [k for k, v in sd.items() if k in own and own[k].shape != v.shape]
         for k in drop: del sd[k]
@@ -159,7 +160,7 @@ def train(epochs=30, seed=0, batch=256, init_from=""):
 
 def load_model(V):
     m = TeamDiffusionHPS(V).to(DEV)
-    m.load_state_dict(torch.load(CKPT, map_location=DEV)["sd"]); m.eval()
+    m.load_state_dict(load_checkpoint(CKPT, map_location=DEV)["sd"]); m.eval()
     return m
 
 @torch.no_grad()

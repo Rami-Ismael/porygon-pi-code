@@ -5,12 +5,13 @@ from corpus import load_corpus
 from encode import Vocab, Legality, NF, NSLOT
 from model import MaskedFieldModel
 from pilot import COLS, evaluate
+from checkpoints import load_checkpoint
 DEV="mps" if torch.backends.mps.is_available() else "cpu"
 rng=np.random.default_rng(0)
 teams,_=load_corpus(); teams=[t for t in teams if len(t)==6]
 V,L=Vocab(teams),Legality(teams)
 Z=np.load("/tmp/vgc-pilot/arrays_s0.npz"); Xtr=Z["Xtr"]
-model=MaskedFieldModel(V).to(DEV); model.load_state_dict(torch.load("/tmp/vgc-pilot/model_s0.pt")); model.eval()
+model=MaskedFieldModel(V).to(DEV); model.load_state_dict(load_checkpoint("/tmp/vgc-pilot/model_s0.pt")); model.eval()
 
 @torch.no_grad()
 def resample(x, cols_to_mask, temp=1.0, order="random", greedy=False, gen=None):

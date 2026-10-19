@@ -7,13 +7,14 @@ from corpus import load_corpus
 from encode import Vocab, Legality, NF, NSLOT
 from model import MaskedFieldModel, resample_fields
 from pilot import evaluate, op_slotcopy, op_marginal, op_uniform, set_seed, COLS, decode_fields
+from checkpoints import load_checkpoint
 DEV="mps"
 set_seed(0); rng=np.random.default_rng(0)
 teams,_=load_corpus(); teams=[t for t in teams if len(t)==6]
 V,L=Vocab(teams),Legality(teams)
 X=np.stack([V.encode(t) for t in teams]); idx=rng.permutation(len(X)); nt=int(len(X)*.15)
 Xte,Xtr=X[idx[:nt]],X[idx[nt:]]
-model=MaskedFieldModel(V).to(DEV); model.load_state_dict(torch.load("/tmp/vgc-pilot/probe_model.pt")); model.eval()
+model=MaskedFieldModel(V).to(DEV); model.load_state_dict(load_checkpoint("/tmp/vgc-pilot/probe_model.pt")); model.eval()
 def viol2(row):
     v=L.violations(decode_fields(V,row))
     its=[V.decode_field(s*NF+2,int(row[s*NF+2])) for s in range(NSLOT)]; its=[i for i in its if i]

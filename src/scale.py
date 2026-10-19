@@ -28,7 +28,7 @@ ARMS = [("d96_f100", 96, 1.0), ("d192_f100", 192, 1.0), ("d384_f100", 384, 1.0),
 OUT = "/tmp/vgc-pilot/scale_results.json"
 
 def train_arm(tag, d, frac, epochs=300, seed=0):
-    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
+    random.seed(seed); torch.manual_seed(seed)
     V, L, corpus, teams, wrs = W.build_vocab()
     X = np.stack([V.encode(t) for t in teams]); Y = np.array([D.style_of(t) for t in teams]); Wb = np.array([W.wr_bin(w) for w in wrs])
     rng = np.random.default_rng(seed); idx = rng.permutation(len(X)); nte = int(len(X) * .1)
