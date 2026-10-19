@@ -50,6 +50,7 @@ from diversity_metrics import Reference
 from hps_generate import Validator
 from corpus import parse_team_text, norm
 from encode import team_fields
+from checkpoints import load_checkpoint
 
 TAG = os.environ.get("CEM_TAG", "cem_dbbo")
 OUT = L.RES / f"{TAG}.json"
@@ -172,7 +173,7 @@ def members(V, tables, lab, g):
         ck = L.CK / f"{TAG}_g{g}_{name}.pt"
         net, cfg, _ = L.load_net(name, V)
         if ck.exists():
-            net.load_state_dict(torch.load(ck, map_location=DEV)["sd"])
+            net.load_state_dict(load_checkpoint(ck, map_location=DEV)["sd"])
         else:
             torch.manual_seed(SEED + g)
             xo, wo = original_rows(name, cfg)
@@ -208,7 +209,7 @@ def precise_base(V, tables):
     nets = []
     for name in FD.V3_MEMBERS:
         net, cfg, _ = L.load_net(name, V)
-        net.load_state_dict(torch.load(L.CK / f"dial_precise_{name}.pt", map_location=DEV)["sd"]); net.eval()
+        net.load_state_dict(load_checkpoint(L.CK / f"dial_precise_{name}.pt", map_location=DEV)["sd"]); net.eval()
         nets.append(L.logprobs_fn(net, tables, tuple(cfg["rules"].split(","))))
     return L.ensemble_fn(nets)
 
@@ -241,9 +242,9 @@ def members_precise(V, tables, el, g):
     for name in FD.V3_MEMBERS:
         ck = L.CK / f"{TAG}_g{g}_{name}.pt"
         net, cfg, _ = L.load_net(name, V)
-        if ck.exists(): net.load_state_dict(torch.load(ck, map_location=DEV)["sd"])
+        if ck.exists(): net.load_state_dict(load_checkpoint(ck, map_location=DEV)["sd"])
         else:
-            net.load_state_dict(torch.load(L.CK / f"dial_precise_{name}.pt", map_location=DEV)["sd"])
+            net.load_state_dict(load_checkpoint(L.CK / f"dial_precise_{name}.pt", map_location=DEV)["sd"])
             torch.manual_seed(SEED + g)
             Xe = torch.as_tensor(np.stack([e[0] for e in el]), device=DEV)
             We = torch.as_tensor(np.array([e[1] for e in el], np.float32), device=DEV)
@@ -293,7 +294,7 @@ def train_scratch(V, tables, X, W, g):
     net = L.Net(V, d=cfg["d"], nhead=cfg["nhead"], nlayer=cfg["nlayer"], dropout=cfg["dropout"], time_cond=bool(cfg["time_cond"]),
                 ntag=0, prime=cfg["prime"], mrow=0).to(DEV)
     if ck.exists():
-        net.load_state_dict(torch.load(ck, map_location=DEV)["sd"]); net.eval()
+        net.load_state_dict(load_checkpoint(ck, map_location=DEV)["sd"]); net.eval()
         return L.logprobs_fn(net, tables, rules)
     torch.manual_seed(SEED + 500 + g)
     xt, wt = torch.as_tensor(X, device=DEV), torch.as_tensor(W, device=DEV)

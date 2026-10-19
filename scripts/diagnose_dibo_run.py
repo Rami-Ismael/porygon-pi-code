@@ -10,6 +10,7 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
 import dibo_core as DC
+from checkpoints import load_checkpoint
 
 
 def main():
@@ -61,7 +62,7 @@ def main():
     keys = ['species', 'ability', 'item', 'move', 'move', 'move', 'move', 'nature']
     probes = []
     for g in [0, cfg['rounds']-1]:
-        ck = torch.load(ckdir / f'round{g}.pt', map_location='cpu', weights_only=False)
+        ck = load_checkpoint(ckdir / f'round{g}.pt', map_location='cpu')
         ensemble = DC.PredictorEnsemble([DC.Predictor(sizes, keys, width=cfg['width'], hidden=cfg['hidden']) for _ in range(cfg['ensemble'])])
         ensemble.load_state_dict(ck['ensemble']); ensemble.eval()
         x = torch.tensor([a['x'] for a in arms['dibo']['rounds'][str(g)]['selected']])

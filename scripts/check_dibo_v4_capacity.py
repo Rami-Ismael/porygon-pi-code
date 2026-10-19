@@ -8,6 +8,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 import dibo_comparison_v2 as C
 import dibo_v4 as D
 import dibo_core_v4 as Core
+from checkpoints import load_checkpoint
 
 root=Path(__file__).resolve().parents[1]
 cfg=C.config()
@@ -15,7 +16,7 @@ runtime=D.Runtime(cfg,root/'results/dibo_v4_capacity_check.json')
 try:
     harness=root/'results/dibo_v4_harness_20261013/dibo.json'
     ckdir=D.L.CK/('dibo_v4_'+hashlib.sha256(str(harness).encode()).hexdigest()[:12])
-    ck=torch.load(ckdir/'round0.pt',map_location=D.L.DEV,weights_only=False)
+    ck=load_checkpoint(ckdir/'round0.pt',map_location=D.L.DEV)
     prior=Core.posterior_copy(Core.PathSampler(runtime.base,D.D.ORDER,D.L.DEV))
     prior.model.load_state_dict(ck['prior'])
     ensemble=runtime.ensemble(cfg['seed']);ensemble.load_state_dict(ck['ensemble']);ensemble.eval()

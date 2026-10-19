@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import foundation as FD
 import lossdown as L
 from corpus import parse_team_text
+from checkpoints import load_checkpoint
 
 GRID = [round(0.1 * i, 1) for i in range(1, 9)]
 MODELS = {"v3 as trained": None, "fixed-ask loop g3 (elite re-steer)": "cem_fixed_elite_g3",
@@ -35,13 +36,13 @@ def members(G, prefix):
     nets = []
     for name in FD.V3_MEMBERS:
         net, cfg, _ = L.load_net(name, G.V)
-        if prefix: net.load_state_dict(torch.load(L.CK / f"{prefix}_{name}.pt", map_location=L.DEV)["sd"])
+        if prefix: net.load_state_dict(load_checkpoint(L.CK / f"{prefix}_{name}.pt", map_location=L.DEV)["sd"])
         net.eval(); nets.append(L.logprobs_fn(net, G.tables, tuple(cfg["rules"].split(","))))
     return L.ensemble_fn(nets)
 
 
 def scratch(G, ck):
-    z = torch.load(ck, map_location=L.DEV); cfg = z["cfg"]
+    z = load_checkpoint(ck, map_location=L.DEV); cfg = z["cfg"]
     net = L.Net(G.V, d=cfg["d"], nhead=cfg["nhead"], nlayer=cfg["nlayer"], dropout=cfg["dropout"], time_cond=bool(cfg["time_cond"]),
                 ntag=0, prime=cfg["prime"], mrow=0).to(L.DEV)
     net.load_state_dict(z["sd"]); net.eval()

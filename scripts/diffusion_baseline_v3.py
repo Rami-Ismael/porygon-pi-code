@@ -50,10 +50,11 @@ def generate(args):
     import asked_vs_got as X
     import diffusion as D
     from corpus import norm
+    from checkpoints import load_checkpoint
     torch.set_num_threads(1)
     L.DEV = D.DEV = torch.device('cpu')
     corpus, vocab, _, look, spreads = X.setup()
-    first = torch.load(L.CK/(args.members[0]+'.pt'),map_location='cpu')
+    first = load_checkpoint(L.CK/(args.members[0]+'.pt'),map_location='cpu')
     if first.get('regulation',{}).get('training_policy',{}).get('version') != 'v3':
         raise ValueError('V3 decoder requires a v3 training-policy checkpoint')
     if first.get('regulation'):

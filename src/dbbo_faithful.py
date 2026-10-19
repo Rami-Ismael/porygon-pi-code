@@ -41,6 +41,7 @@ import pool
 from corpus import parse_team_text
 from encode import team_fields
 from hps_generate import Validator
+from checkpoints import load_checkpoint
 
 # DBBO_PRECISE=1 (2026-10-16, docs/dbbo-faithful.md "Precise-label variant"): D starts from ALL the ask-dial precise-label
 # teams (about 196 battles each), and every battled team gets PER_CELL_PRECISE battles per top-50 column before its label
@@ -127,7 +128,7 @@ def train(V, tables, rows, r):
     net = L.Net(V, d=cfg["d"], nhead=cfg["nhead"], nlayer=cfg["nlayer"], dropout=cfg["dropout"],
                 time_cond=bool(cfg["time_cond"]), ntag=0, prime=cfg["prime"], mrow=0).to(DEV)
     if ck.exists():
-        net.load_state_dict(torch.load(ck, map_location=DEV)["sd"]); net.eval(); return L.logprobs_fn(net, tables, rules), None
+        net.load_state_dict(load_checkpoint(ck, map_location=DEV)["sd"]); net.eval(); return L.logprobs_fn(net, tables, rules), None
     rng = np.random.default_rng(SEED + r); torch.manual_seed(SEED + r)
     enc, ys, skipped = [], [], 0
     for x in rows:                                  # parse_team_text merges an item-less slot into its neighbour (known): such a

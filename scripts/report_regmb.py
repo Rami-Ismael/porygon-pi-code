@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import retrain_regmb as R
+from checkpoints import load_checkpoint
 import torch
 
 audit=json.loads((R.OUT/'data-audit.json').read_text())
@@ -11,9 +12,9 @@ V=R.encode.Vocab.from_regulation(manifest)
 _,old,*_=R.X.setup()
 embedding_audit=[]
 for name in R.MEMBERS:
-    trained=torch.load(R.L.CK/(name+'_regmb_v2.pt'),map_location=R.L.DEV)
+    trained=load_checkpoint(R.L.CK/(name+'_regmb_v2.pt'),map_location=R.L.DEV)
     torch.manual_seed(trained['provenance']['seed'])
-    parent=torch.load(R.L.CK/(name+'.pt'),map_location=R.L.DEV);cfg=parent['cfg']
+    parent=load_checkpoint(R.L.CK/(name+'.pt'),map_location=R.L.DEV);cfg=parent['cfg']
     net=R.L.Net(V,d=cfg['d'],nhead=cfg['nhead'],nlayer=cfg['nlayer'],dropout=cfg['dropout'],
                 time_cond=bool(cfg['time_cond']),mrow=49 if cfg['mrow'] else 0).to(R.L.DEV)
     R.migrate(net,parent,old,V)

@@ -23,6 +23,7 @@ import lossdown_battle as LB
 import matchup_db as MDB
 import heldout as HO
 from hps_generate import Validator
+from checkpoints import load_checkpoint
 
 import os
 # ASKSWEEP_TAG / ASKSWEEP_G / ASKSWEEP_MODELS ("name=prefix,..."; prefix "-" = original members) reuse this sweep
@@ -42,7 +43,7 @@ def model(G, prefix):
     nets = []
     for name in FD.V3_MEMBERS:
         net, cfg, _ = L.load_net(name, G.V)
-        if prefix: net.load_state_dict(torch.load(L.CK / f"{prefix}_{name}.pt", map_location=L.DEV)["sd"])
+        if prefix: net.load_state_dict(load_checkpoint(L.CK / f"{prefix}_{name}.pt", map_location=L.DEV)["sd"])
         net.eval(); nets.append(L.logprobs_fn(net, G.tables, tuple(cfg["rules"].split(","))))
     return L.ensemble_fn(nets)
 
