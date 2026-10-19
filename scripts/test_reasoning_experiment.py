@@ -6,7 +6,10 @@ import unittest
 from unittest.mock import patch, Mock, AsyncMock
 
 import repo_paths  # puts src/ first on sys.path
+import llm_completion
 import results
+import showdown_validator
+import team_masks
 import llm_baseline as B
 import reasoning_experiment as E
 
@@ -19,9 +22,9 @@ class ReasoningExperimentTests(unittest.TestCase):
         self.args = SimpleNamespace(parent=root / 'parent', output=root / 'study',
                                     arms=['off', 'on'], replicates=2, max_tokens=16384, request_timeout=600)
         team = [dict(species='Pikachu', item='Light Ball', ability='Static', nature='Jolly',
-                     moves=['Protect', 'Thunderbolt', 'Thunder', 'Volt Switch'], evs={s: 0 for s in B.STATS})
+                     moves=['Protect', 'Thunderbolt', 'Thunder', 'Volt Switch'], evs={s: 0 for s in team_masks.STATS})
                 for _ in range(6)]
-        self.manifest = dict(model=B.MODEL, format=B.FORMAT, starts=[team], seed=42,
+        self.manifest = dict(model=llm_completion.MODEL, format=showdown_validator.FORMAT, starts=[team], seed=42,
             trials=[dict(id='s0-item-1', start=0, task='item', k=1, paths=[[0, 'item']], random_team=team)],
             opponents=[dict(team_id=1, paste='frozen opponent')], battles=50, grid={'item': [1]},
             max_tokens=4096, temperature=.7, reasoning={'enabled': False}, seed_limit='simulator unseeded')
@@ -81,8 +84,8 @@ class ReasoningExperimentTests(unittest.TestCase):
         study, runs = self.prepare()
         self.assertEqual(study['planned_calls'], 4)
         self.assertEqual(E.read(self.args.parent / 'manifest.json'), self.manifest)
-        a = B.completion_payload(runs[0][2], self.manifest['trials'][0])
-        b = B.completion_payload(runs[2][2], self.manifest['trials'][0])
+        a = llm_completion.completion_payload(runs[0][2], self.manifest['trials'][0])
+        b = llm_completion.completion_payload(runs[2][2], self.manifest['trials'][0])
         self.assertNotEqual(a.pop('reasoning'), b.pop('reasoning'))
         self.assertEqual(a, b)
         self.assertTrue(a['provider']['require_parameters'])
@@ -91,7 +94,7 @@ class ReasoningExperimentTests(unittest.TestCase):
             E.prepare(self.args)
 
     def test_request_builder_preserves_legacy_defaults(self):
-        payload = B.completion_payload(self.manifest, self.manifest['trials'][0])
+        payload = llm_completion.completion_payload(self.manifest, self.manifest['trials'][0])
         self.assertEqual(payload['reasoning'], {'enabled': False})
         self.assertEqual(payload['provider'], {'order': ['novita'], 'allow_fallbacks': False})
         self.assertEqual(payload['max_tokens'], 4096)
@@ -99,7 +102,7 @@ class ReasoningExperimentTests(unittest.TestCase):
     def test_changed_manifest_prompt_or_completion_is_rejected(self):
         _, runs = self.prepare()
         entry, folder, manifest = runs[0]
-        with patch.object(B, 'prompt', return_value=[]), self.assertRaisesRegex(ValueError, 'request changed'):
+        with patch.object(llm_completion, 'prompt', return_value=[]), self.assertRaisesRegex(ValueError, 'request changed'):
             E.load_runs(self.args.output)
         self.record(entry, folder)
         row = E.read(folder / 'completions/s0-item-1.json')
@@ -174,8 +177,8 @@ class ReasoningExperimentTests(unittest.TestCase):
         response = Mock()
         response.__enter__ = Mock(return_value=response)
         response.__exit__ = Mock(return_value=False)
-        response.read.return_value = json.dumps({'data': [{'id': B.MODEL}]}).encode()
-        with patch.object(E.urllib.request, 'urlopen', return_value=response), patch.object(B, 'complete') as generate:
+        response.read.return_value = json.dumps({'data': [{'id': llm_completion.MODEL}]}).encode()
+        with patch.object(E.urllib.request, 'urlopen', return_value=response), patch.object(llm_completion, 'complete') as generate:
             with self.assertRaisesRegex(ValueError, 'does not advertise'):
                 E.run(self.args)
             generate.assert_not_called()
@@ -193,13 +196,13 @@ class ReasoningExperimentTests(unittest.TestCase):
         entry, folder, m = runs[0]
         h = Mock()
         self.record(entry, folder)
-        with patch.object(B, 'runtime', return_value=(h, None)), patch.object(B.urllib.request, 'urlopen') as request:
-            B.complete(SimpleNamespace(output=folder))
+        with patch.object(showdown_validator, 'runtime', return_value=(h, None)), patch.object(llm_completion.urllib.request, 'urlopen') as request:
+            llm_completion.complete(SimpleNamespace(output=folder))
             request.assert_not_called()
             (folder / 'completions/s0-item-1.json').unlink()
             results.save(folder / 'completions/s0-item-1.pending', {})
             with self.assertRaisesRegex(RuntimeError, 'uncertain previous API request'):
-                B.complete(SimpleNamespace(output=folder))
+                llm_completion.complete(SimpleNamespace(output=folder))
             request.assert_not_called()
 
     def test_generation_sends_reasoning_and_retains_truncation_usage(self):
@@ -211,10 +214,10 @@ class ReasoningExperimentTests(unittest.TestCase):
         response.read.return_value = json.dumps(dict(choices=[dict(finish_reason='length',
             message={'content': ''})], usage={'completion_tokens_details': {'reasoning_tokens': 16384}})).encode()
         h = Mock()
-        with patch.dict(B.os.environ, {'OPENROUTER_API_KEY': 'test-only'}), \
-                patch.object(B, 'runtime', return_value=(h, None)), \
-                patch.object(B.urllib.request, 'urlopen', return_value=response) as request:
-            B.complete(SimpleNamespace(output=folder))
+        with patch.dict(llm_completion.os.environ, {'OPENROUTER_API_KEY': 'test-only'}), \
+                patch.object(showdown_validator, 'runtime', return_value=(h, None)), \
+                patch.object(llm_completion.urllib.request, 'urlopen', return_value=response) as request:
+            llm_completion.complete(SimpleNamespace(output=folder))
         sent = json.loads(request.call_args.args[0].data)
         self.assertEqual(sent['reasoning'], {'enabled': True})
         self.assertEqual(request.call_args.kwargs['timeout'], 600)

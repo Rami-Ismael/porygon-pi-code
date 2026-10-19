@@ -12,6 +12,7 @@ import sys
 from types import SimpleNamespace
 from repo_paths import ROOT  # also puts src/ first on sys.path
 import results
+import showdown_validator
 import llm_baseline as B
 import prompt_versions as V
 
@@ -66,14 +67,14 @@ def run(args):
 
 def battle_worker(index,count,backend='fast'):
     """Score the legal completions only; the comparison is between the two prompts."""
-    h,db=B.runtime();jobs=[]
+    h,db=showdown_validator.runtime();jobs=[]
     for f in folders():
         m=read(f/'manifest.json');tag=f.parent.name.split('-')[-1]+f.name  # v3r0: no hyphen, so the starter index still parses
         for t in m['trials']:
             r=read(f/'completions'/(t['id']+'.json'))
             if r and r['valid'] and not (f/'labels'/('llm-'+t['id']+'.json')).exists():jobs.append((tag+'-'+t['id'],r['team'],f/'labels'/('llm-'+t['id']+'.json')))
     # Identical teams always go to the same process, preventing cache races.
-    jobs=[j for j in jobs if int(results.digest(db.canonical_paste(B.paste(j[1],h))),16)%count==index]
+    jobs=[j for j in jobs if int(results.digest(db.canonical_paste(showdown_validator.paste(j[1],h))),16)%count==index]
     out=OUT/'workers'/str(index);results.save(out/'manifest.json',m)
     try:B.battle(SimpleNamespace(output=out,battle_backend=backend),candidates_override=[(label,team) for label,team,_ in jobs])
     finally:

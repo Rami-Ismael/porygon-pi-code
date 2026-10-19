@@ -2,7 +2,8 @@ import copy
 import json
 import unittest
 from repo_paths import ROOT  # also puts src/ first on sys.path
-import llm_baseline as B
+import llm_completion
+import team_masks
 import prompt_versions as V
 
 
@@ -23,7 +24,7 @@ class PromptVersionTests(unittest.TestCase):
         self.assertEqual(new[1:],old[1:])
 
     def test_reference_does_not_depend_on_the_hidden_values(self):
-        altered=copy.deepcopy(V.FIXTURE);B.set_path(altered['starts'][0],[0,'item'],'SECRET-HIDDEN-VALUE')
+        altered=copy.deepcopy(V.FIXTURE);team_masks.set_path(altered['starts'][0],[0,'item'],'SECRET-HIDDEN-VALUE')
         self.assertEqual(V.messages(V.REGULATION,V.FIXTURE,V.FIXTURE_TRIAL),V.messages(V.REGULATION,altered,V.FIXTURE_TRIAL))
 
     def test_reference_matches_the_simulator_vocabulary(self):
@@ -33,7 +34,7 @@ class PromptVersionTests(unittest.TestCase):
                 if value:self.assertIn(reg['names'].get(value,value),text)
 
     def test_unknown_version_is_refused(self):
-        with self.assertRaises(ValueError):B.prompt(dict(V.FIXTURE,prompt_version='mb-typo'),V.FIXTURE_TRIAL)
+        with self.assertRaises(ValueError):llm_completion.prompt(dict(V.FIXTURE,prompt_version='mb-typo'),V.FIXTURE_TRIAL)
 
 
 if __name__=='__main__':unittest.main()

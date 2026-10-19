@@ -9,15 +9,17 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import llm_completion
 import results
-import llm_baseline as B
+import showdown_validator
+import team_masks
 import reasoning_experiment as E
 
 
 def fresh_starters(parent, count, seed):
     """Sample legal starters without generating unused random-fill controls."""
     import numpy as np
-    h, db = B.runtime()
+    h, db = showdown_validator.runtime()
     tables = h.build_tables()
     rng = np.random.default_rng(seed)
     m = copy.deepcopy(parent)
@@ -27,7 +29,7 @@ def fresh_starters(parent, count, seed):
     m['starter_kind'] = 'fresh random legal teams outside the frozen opponent pool'
     seen = {db.canon_hash(db.canonical_paste(o['paste'])) for o in m['opponents']}
     # Exclude earlier pilot starters too: the follow-up is a fresh sample.
-    seen.update(db.canon_hash(db.canonical_paste(B.paste(t, h))) for t in parent['starts'])
+    seen.update(db.canon_hash(db.canonical_paste(showdown_validator.paste(t, h))) for t in parent['starts'])
     validator = h.Validator()
     try:
         for o in m['opponents']:
@@ -38,11 +40,11 @@ def fresh_starters(parent, count, seed):
             team = h.one_team(tables, rng)
             if team is None:
                 continue
-            text = B.paste(team, h)
+            text = showdown_validator.paste(team, h)
             key = db.canon_hash(db.canonical_paste(text))
             if key in seen or validator(text) is not None:
                 continue
-            B.validate_shape(team)
+            team_masks.validate_shape(team)
             seen.add(key)
             m['starts'].append(team)
             if len(m['starts']) == count:
@@ -53,7 +55,7 @@ def fresh_starters(parent, count, seed):
         validator.close()
     for start in range(count):
         for task, sizes in m['grid'].items():
-            paths = B.paths_for(task)
+            paths = team_masks.paths_for(task)
             random.Random(f'{seed}:{start}:{task}').shuffle(paths)
             k = max(sizes)
             m['trials'].append(dict(id=f's{start}-{task}-{k}', start=start,
@@ -87,7 +89,7 @@ def main():
             p.error('starters and replicates must be positive')
         if args.output.exists() and any(args.output.iterdir()):
             p.error('output must be empty')
-        parent = B.load_manifest(SimpleNamespace(output=args.parent))
+        parent = llm_completion.load_manifest(SimpleNamespace(output=args.parent))
         m = fresh_starters(parent, args.starters, args.seed) if args.sample_new else copy.deepcopy(parent)
         starters = sorted({t['start'] for t in m['trials']})[:args.starters]
         if len(starters) != args.starters:

@@ -23,11 +23,12 @@ from types import SimpleNamespace
 import urllib.request
 
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import llm_completion
 import results
 import llm_baseline as B
 import reasoning_experiment as E
 
-MODEL_NAMES = {B.MODEL: 'Ling 3.0 Flash', 'inception/mercury-2.5': 'Mercury 2.5'}
+MODEL_NAMES = {llm_completion.MODEL: 'Ling 3.0 Flash', 'inception/mercury-2.5': 'Mercury 2.5'}
 VARIANT_NAMES = {'chat': 'DSPy field-marker format', 'json': 'DSPy JSON-object format',
                  'resampled': 'Baseline JSON prompt, sampled again'}
 RESAMPLED = 'resampled'
@@ -58,7 +59,7 @@ def variant_name(variant, program=None, constraints=None):
 
 
 def payload_without_messages(manifest, trial):
-    payload = B.completion_payload(manifest, trial)
+    payload = llm_completion.completion_payload(manifest, trial)
     payload.pop('messages')
     return payload
 
@@ -114,7 +115,7 @@ def prepare(args):
                                                    baseline_manifest_sha256=entry['manifest_sha256'])
                 rerouted = m['model'] in overrides
                 if rerouted:
-                    original = B.completion_payload(m, m['trials'][0])['provider']
+                    original = llm_completion.completion_payload(m, m['trials'][0])['provider']
                     new['provider'] = dict(original, order=[overrides[m['model']]])
                     new['structure_experiment']['provider_override'] = dict(baseline=original, used=new['provider'])
                     study['provider_overrides'][m['model']] = dict(baseline=original, used=new['provider'])
@@ -128,22 +129,22 @@ def prepare(args):
                         raise ValueError('structured request changed a sampling or routing setting')
                     if variant == RESAMPLED:
                         if rerouted:
-                            if B.completion_payload(new, t)['messages'] != B.completion_payload(m, t)['messages']:
+                            if llm_completion.completion_payload(new, t)['messages'] != llm_completion.completion_payload(m, t)['messages']:
                                 raise ValueError('resampled baseline messages differ from the original')
-                        elif results.digest(B.completion_payload(new, t)) != entry['request_hashes'][t['id']]:
+                        elif results.digest(llm_completion.completion_payload(new, t)) != entry['request_hashes'][t['id']]:
                             raise ValueError('resampled baseline request differs from the original')
                     else:
                         S.check_information(new, t)
                 arm = f"{slug(m['model'])}-{entry['arm']}-{variant}"
                 study['arms'][arm] = dict(model=m['model'], reasoning=entry['arm'], variant=variant)
                 relative = f"{slug(m['model'])}/{entry['arm']}/{variant}/r{entry['replicate']}"
-                hashes = {t['id']: results.digest(B.completion_payload(new, t)) for t in new['trials']}
+                hashes = {t['id']: results.digest(llm_completion.completion_payload(new, t)) for t in new['trials']}
                 study['runs'].append(dict(path=relative, arm=arm, model=m['model'], reasoning=entry['arm'],
                                           variant=variant, replicate=entry['replicate'],
                                           baseline=folder.name, baseline_path=entry['path'],
                                           manifest_sha256=results.digest(new), request_hashes=hashes))
                 results.save(args.output / relative / 'manifest.json', new)
-                results.save(args.output / relative / 'example-request.json', B.completion_payload(new, new['trials'][0]))
+                results.save(args.output / relative / 'example-request.json', llm_completion.completion_payload(new, new['trials'][0]))
     study['planned_calls'] = sum(len(r['request_hashes']) for r in study['runs'])
     results.save(args.output / 'experiment.json', study)
     print(json.dumps(dict(output=str(args.output), planned_calls=study['planned_calls'],

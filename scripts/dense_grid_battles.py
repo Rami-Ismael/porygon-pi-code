@@ -6,6 +6,7 @@ import json
 from types import SimpleNamespace
 from repo_paths import ROOT  # also puts src/ first on sys.path
 import results
+import showdown_validator
 import llm_baseline as B
 
 BASE=ROOT/'results/llm-baseline-full-grid'
@@ -28,10 +29,10 @@ def worker(index,count,baseline=None,diffusion=None,backend='fast'):
             if p.exists():
                 r=json.loads(p.read_text())
                 if r['valid']: candidates.append((prefix+t['id'],r['team'],source))
-    h,db=B.runtime()
+    h,db=showdown_validator.runtime()
     # Identical teams always go to the same process, preventing cache races.
     selected=[(label,team,dest) for label,team,dest in candidates
-              if int(results.digest(db.canonical_paste(B.paste(team,h))),16)%count==index]
+              if int(results.digest(db.canonical_paste(showdown_validator.paste(team,h))),16)%count==index]
     B.battle(SimpleNamespace(output=out,battle_backend=backend),candidates_override=[(label,team) for label,team,_ in selected])
     for label,_,dest in selected:
         p=out/'labels'/(label+'.json')

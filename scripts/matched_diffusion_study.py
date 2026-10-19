@@ -11,6 +11,8 @@ import time
 from types import SimpleNamespace
 from repo_paths import ROOT  # also puts src/ first on sys.path
 import results
+import showdown_validator
+import team_masks
 import llm_baseline as B
 import diffusion_baseline_v3 as D
 import reasoning_battles as RB
@@ -74,20 +76,20 @@ def run():
             gen=copy.deepcopy(m);gen['seed']=m['seed']+100000*rep
             D.generate(SimpleNamespace(output=OUT/f'r{rep}',manifest=gen,members=D.MEMBERS))
             snapshot('generating')
-        h,db=B.runtime();groups={}
+        h,db=showdown_validator.runtime();groups={}
         for rep in range(3):
             for t in m['trials']:
                 row=json.loads((OUT/f'r{rep}/completions'/(t['id']+'.json')).read_text())
                 if not row['valid']:continue
-                assert B.masked(row['team'],t['paths'])==B.masked(m['starts'][t['start']],t['paths'])
-                key=results.digest(dict(team=db.canonical_paste(B.paste(row['team'],h)),schedule=B.schedule_for(m,t['start'])))
+                assert team_masks.masked(row['team'],t['paths'])==team_masks.masked(m['starts'][t['start']],t['paths'])
+                key=results.digest(dict(team=db.canonical_paste(showdown_validator.paste(row['team'],h)),schedule=B.schedule_for(m,t['start'])))
                 g=groups.setdefault(key,dict(key=key,team=row['team'],start=t['start'],destinations=[]))
                 g['destinations'].append(str(OUT/f'r{rep}/labels'/('diffusion-'+t['id']+'.json')))
         pending=[g for g in groups.values() if any(not Path(x).exists() for x in g['destinations'])]
         con=db.connect();validator=h.Validator()
         try:
             for g in pending:
-                tid=db.add_team(con,B.paste(g['team'],h),'matched-diffusion',validator)[0];db.paste_file(con,tid)
+                tid=db.add_team(con,showdown_validator.paste(g['team'],h),'matched-diffusion',validator)[0];db.paste_file(con,tid)
             for opponent in m['opponents']:db.paste_file(con,opponent['team_id'])
         finally:validator.close();con.close()
         snapshot('scoring')

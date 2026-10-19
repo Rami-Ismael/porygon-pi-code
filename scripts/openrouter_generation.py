@@ -19,8 +19,9 @@ import urllib.error
 import urllib.request
 
 import repo_paths  # puts src/ first on sys.path
+import llm_completion
 import results
-import llm_baseline as B
+import showdown_validator
 
 
 @dataclass(frozen=True)
@@ -159,7 +160,7 @@ async def _generate(jobs, output, options, transport, validate, key, stop):
         if path in seen:
             raise ValueError(f'duplicate output path: {path}')
         seen.add(path)
-        payload = B.completion_payload(job.manifest, job.trial)
+        payload = llm_completion.completion_payload(job.manifest, job.trial)
         request_hash = results.digest(payload)
         if path.exists():
             record = json.loads(path.read_text())
@@ -175,9 +176,9 @@ async def _generate(jobs, output, options, transport, validate, key, stop):
         raise RuntimeError('OPENROUTER_API_KEY is not configured; no requests sent')
     validator = None
     if validate is None and (queue or recover):
-        h, _ = B.runtime()
+        h, _ = showdown_validator.runtime()
         validator = h.Validator()
-        validate = lambda record, job: B.validate_record(record, job.manifest, job.trial, h, validator)
+        validate = lambda record, job: llm_completion.validate_record(record, job.manifest, job.trial, h, validator)
     gate = Controller(options)
     active = {}
     errors = []

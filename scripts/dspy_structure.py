@@ -10,7 +10,7 @@ input values, and changes only how they are packaged and parsed:
 - the reply is parsed by the DSPy adapter into that type.
 
 The parsed answer then goes through the unchanged baseline checks
-(`llm_baseline.apply_completion` and the Showdown validator). DSPy only formats
+(`llm_completion.apply_completion` and the Showdown validator). DSPy only formats
 and parses here: no DSPy LM call, retry, adapter fallback or optimization runs.
 """
 import json
@@ -20,6 +20,8 @@ from typing import Union
 
 import dspy
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, create_model
+
+import repo_paths  # puts src/ first on sys.path
 
 KIND = 'dspy'
 ADAPTERS = ('chat', 'json')
@@ -219,9 +221,9 @@ def strip_envelope(system):
 
 
 def baseline_parts(manifest, trial):
-    import llm_baseline as B
+    import llm_completion
     plain = {k: v for k, v in manifest.items() if k != 'structure'}
-    system, user = B.prompt(plain, trial)
+    system, user = llm_completion.prompt(plain, trial)
     return system['content'], json.loads(user['content'])
 
 

@@ -7,8 +7,10 @@ import random
 import shutil
 
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import completion_study
 import results
-import llm_baseline as B
+import showdown_validator
+import team_masks
 
 
 def prepare():
@@ -19,15 +21,15 @@ def prepare():
     diff = ROOT / 'results/diffusion-baseline-full-grid'
     original = json.loads((source/'manifest.json').read_text())
     m = copy.deepcopy(original)
-    m['grid'] = {task:list(range(1,len(B.paths_for(task))+1)) for task in B.GRID}
-    h, _ = B.runtime()
+    m['grid'] = {task:list(range(1,len(team_masks.paths_for(task))+1)) for task in team_masks.GRID}
+    h, _ = showdown_validator.runtime()
     tables = h.build_tables()
     validator = h.Validator()
     old_ids = {t['id'] for t in m['trials']}
     try:
         for i, team in enumerate(m['starts']):
             for task, sizes in m['grid'].items():
-                order = B.paths_for(task)
+                order = team_masks.paths_for(task)
                 random.Random(f"{m['seed']}:{i}:{task}").shuffle(order)
                 for k in sizes:
                     tid = f's{i}-{task}-{k}'
@@ -36,7 +38,7 @@ def prepare():
                         assert old['paths'] == order[:k]
                         continue
                     seed = int(hashlib.sha256(f"dense:{m['seed']}:{tid}".encode()).hexdigest()[:16],16)
-                    control = B.random_fill(team,order[:k],tables,np.random.default_rng(seed),h,validator)
+                    control = completion_study.random_fill(team,order[:k],tables,np.random.default_rng(seed),h,validator)
                     m['trials'].append(dict(id=tid,start=i,task=task,k=k,paths=order[:k],random_team=control))
     finally:
         validator.close()
@@ -68,7 +70,7 @@ def report():
     target=ROOT/'results/llm-baseline-full-grid'
     diff=ROOT/'results/diffusion-baseline-full-grid'
     m=json.loads((target/'manifest.json').read_text())
-    B.report(SimpleNamespace(output=target))
+    completion_study.report(SimpleNamespace(output=target))
     status=json.loads((target/'status.json').read_text())
     assert status['complete'], 'Ling scoring incomplete'
     assert json.loads((target/'battle-config.json').read_text()) == json.loads((diff/'battle-config.json').read_text())

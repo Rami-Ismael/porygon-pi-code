@@ -13,8 +13,10 @@ import subprocess
 import sys
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import completion_study
 import results
-import llm_baseline as B
+import showdown_validator
+import team_masks
 from resume_full_grid import restore_runtime
 
 BASE=ROOT/'results/llm-baseline-meta-starters'
@@ -26,7 +28,7 @@ MEMBERS=selection.get('members',['F1_final_medium_noheldout_regmb_v2','G2_family
 
 def random_control(team,paths,tables,rng,h,validator,regulation):
     from corpus import norm,NATURES
-    if any(len(p)==1 for p in paths): return B.random_fill(team,paths,tables,rng,h,validator)
+    if any(len(p)==1 for p in paths): return completion_study.random_fill(team,paths,tables,rng,h,validator)
     allowed={tuple(p) for p in paths}
     names=regulation['names']
     pool={norm(x) for x in tables['items']}
@@ -50,9 +52,9 @@ def random_control(team,paths,tables,rng,h,validator,regulation):
                 for j,value in zip(missing,rng.choice(moves,len(missing),replace=False)): result[i]['moves'][j]=str(value)
             if (i,'nature') in allowed: result[i]['nature']=str(rng.choice(NATURES))
             if (i,'evs') in allowed: result[i]['evs']=h.sample_spread(rng)
-        B.validate_shape(result)
-        if validator(B.paste(result,h)) is None:
-            assert B.masked(result,paths)==B.masked(team,paths)
+        team_masks.validate_shape(result)
+        if validator(showdown_validator.paste(result,h)) is None:
+            assert team_masks.masked(result,paths)==team_masks.masked(team,paths)
             return result
     raise RuntimeError('Compatible random-fill control failed final validation')
 
@@ -61,7 +63,7 @@ def prepare():
     import numpy as np
     if (BASE/'manifest.json').exists(): return
     old=json.loads((ROOT/'results/llm-baseline-full-grid/manifest.json').read_text())
-    h,db=B.runtime()
+    h,db=showdown_validator.runtime()
     tables=h.build_tables()
     regulation=json.loads((ROOT/'data/regmb-vocabulary.json').read_text())
     m={k:copy.deepcopy(v) for k,v in old.items() if k not in ('starts','trials','extension','source_sha256')}
@@ -75,15 +77,15 @@ def prepare():
         for i,opponent in enumerate(m['opponents']):
             team=db.canonical_slots(opponent['paste'])
             for slot in team: slot['moves'] += ['']*(4-len(slot['moves']))
-            B.validate_shape(team)
-            assert db.canonical_paste(B.paste(team,h))==db.canonical_paste(opponent['paste'])
-            error=validator(B.paste(team,h))
+            team_masks.validate_shape(team)
+            assert db.canonical_paste(showdown_validator.paste(team,h))==db.canonical_paste(opponent['paste'])
+            error=validator(showdown_validator.paste(team,h))
             if error: raise ValueError(error)
             m['starts'].append(team)
             sources=con.execute('select source,source_id,event,placement,date from team_source where team_id=?',(opponent['team_id'],)).fetchall()
             m['starter_provenance'].append(dict(team_id=opponent['team_id'],sources=sources))
             for task,sizes in m['grid'].items():
-                order=B.paths_for(task)
+                order=team_masks.paths_for(task)
                 random.Random(f"{m['seed']}:{i}:{task}").shuffle(order)
                 for k in sizes:
                     tid=f's{i}-{task}-{k}'
@@ -148,7 +150,7 @@ def run():
 
 def report():
     from types import SimpleNamespace
-    B.report(SimpleNamespace(output=BASE))
+    completion_study.report(SimpleNamespace(output=BASE))
     m=json.loads((BASE/'manifest.json').read_text())
     s=status()
     assert json.loads((BASE/'status.json').read_text())['complete']

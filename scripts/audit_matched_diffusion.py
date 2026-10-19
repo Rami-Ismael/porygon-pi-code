@@ -7,6 +7,7 @@ from pathlib import Path
 import statistics
 from repo_paths import ROOT  # also puts src/ first on sys.path
 import results
+import team_masks
 import llm_baseline as B
 import lossdown as L
 import reasoning_experiment as E
@@ -28,7 +29,7 @@ for rep in range(3):
  assert len(list((folder/'completions').glob('*.json')))==140
  for t in m['trials']:
   r=json.loads((folder/'completions'/(t['id']+'.json')).read_text());assert r['supported'] and r['valid']
-  assert B.masked(r['team'],t['paths'])==B.masked(m['starts'][t['start']],t['paths'])
+  assert team_masks.masked(r['team'],t['paths'])==team_masks.masked(m['starts'][t['start']],t['paths'])
   lab=json.loads((folder/'labels'/('diffusion-'+t['id']+'.json')).read_text())
   assert lab['battles']==50 and sum(x[2] for x in lab['results'])==lab['wins']
   actual=collections.Counter()

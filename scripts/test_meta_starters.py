@@ -2,6 +2,8 @@ import json
 import random
 import unittest
 import repo_paths  # puts src/ first on sys.path
+import llm_completion
+import team_masks
 import llm_baseline as B
 
 
@@ -16,7 +18,7 @@ class MetaStarterTests(unittest.TestCase):
             self.assertEqual(len(panel),50)
             self.assertEqual(len(set(panel)),48)
             self.assertNotIn(i,panel)
-            prompt=json.loads(B.prompt(self.m,dict(start=i,paths=[]))[1]['content'])
+            prompt=json.loads(llm_completion.prompt(self.m,dict(start=i,paths=[]))[1]['content'])
             self.assertNotIn(f'team-{i}',prompt['opponents'])
             self.assertEqual(len(prompt['opponents']),48)
 
@@ -29,11 +31,11 @@ class MetaStarterTests(unittest.TestCase):
 
     def test_fixed_empty_moves_are_preserved_but_masked_moves_need_values(self):
         team=[dict(species='Kangaskhan',item='Kangaskhanite',ability='Scrappy',nature='Jolly',
-                   moves=['Fake Out','Last Resort','',''],evs={s:0 for s in B.STATS}) for _ in range(6)]
-        output=B.apply_completion(team,[[0,'nature']],{'fills':[{'path':[0,'nature'],'value':'Adamant'}]})
+                   moves=['Fake Out','Last Resort','',''],evs={s:0 for s in team_masks.STATS}) for _ in range(6)]
+        output=llm_completion.apply_completion(team,[[0,'nature']],{'fills':[{'path':[0,'nature'],'value':'Adamant'}]})
         self.assertEqual(output[0]['moves'],team[0]['moves'])
         with self.assertRaises(ValueError):
-            B.apply_completion(team,[[0,'moves',2]],{'fills':[{'path':[0,'moves',2],'value':''}]})
+            llm_completion.apply_completion(team,[[0,'moves',2]],{'fills':[{'path':[0,'moves',2],'value':''}]})
 
 
 if __name__=='__main__': unittest.main()

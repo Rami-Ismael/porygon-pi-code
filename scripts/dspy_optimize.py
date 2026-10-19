@@ -22,7 +22,9 @@ import dspy
 
 import dspy_structure as S
 import repo_paths  # puts src/ first on sys.path
+import llm_completion
 import results
+import showdown_validator
 import llm_baseline as B
 
 SPLITS = ('train', 'dev')
@@ -31,7 +33,7 @@ SPLITS = ('train', 'dev')
 def prepare(args):
     """Sample optimization starters disjoint from the test starters and the pool."""
     import run_reasoning_pilot as P
-    parent = B.load_manifest(SimpleNamespace(output=args.parent))
+    parent = llm_completion.load_manifest(SimpleNamespace(output=args.parent))
     if args.output.exists() and any(args.output.iterdir()):
         raise ValueError('output must be empty')
     if parent.get('prompt_version') == 'mb-grounded-v2':
@@ -140,8 +142,8 @@ class Metric:
             answer = S.as_fills(pred.fills, trial['paths'])
         else:
             answer = {'fills': [f.model_dump() for f in pred.fills]}
-        team = B.apply_completion(self.manifest['starts'][trial['start']], trial['paths'], answer)
-        error = self.validator(B.paste(team, self.h))
+        team = llm_completion.apply_completion(self.manifest['starts'][trial['start']], trial['paths'], answer)
+        error = self.validator(showdown_validator.paste(team, self.h))
         if error:
             raise ValueError(error)
         return team
@@ -256,11 +258,11 @@ def export(program, manifest, optimizer):
 
 
 def optimize(args):
-    m = B.load_manifest(SimpleNamespace(output=args.output))
+    m = llm_completion.load_manifest(SimpleNamespace(output=args.output))
     if 'optimization' not in m:
         raise ValueError('run prepare first')
     train, dev = examples(m, 'train'), examples(m, 'dev')
-    h, _ = B.runtime()
+    h, _ = showdown_validator.runtime()
     validator = h.Validator()
     # Retries go to LiteLLM, which backs off exponentially; more of them ride out shared-pool rate limits.
     lm = lm_for(m, num_retries=args.num_retries)

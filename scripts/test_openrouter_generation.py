@@ -12,8 +12,8 @@ import urllib.request
 from unittest.mock import patch
 
 import repo_paths  # puts src/ first on sys.path
+import llm_completion
 import results
-import llm_baseline as B
 import openrouter_generation as G
 
 
@@ -23,7 +23,7 @@ class GenerationTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.jobs = [G.Job(self.root, {}, {'id': str(i)}) for i in range(8)]
-        self.payload = patch.object(B, 'completion_payload', side_effect=lambda m, t: {'id': t['id']})
+        self.payload = patch.object(llm_completion, 'completion_payload', side_effect=lambda m, t: {'id': t['id']})
         self.payload.start()
         self.addCleanup(self.payload.stop)
 

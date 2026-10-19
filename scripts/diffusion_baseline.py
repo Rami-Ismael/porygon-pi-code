@@ -8,6 +8,8 @@ from pathlib import Path
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
 import results
+import showdown_validator
+import team_masks
 import llm_baseline as B
 
 MEMBERS = ["F1_final_medium_noheldout", "G2_family_matrix_noprtrain_noheldout"]
@@ -16,7 +18,7 @@ MEMBERS = ["F1_final_medium_noheldout", "G2_family_matrix_noprtrain_noheldout"]
 def encode_context(team, paths, vocab):
     """Never inspect a masked value, including to determine its move rank."""
     from corpus import norm
-    context = B.masked(team, paths)
+    context = team_masks.masked(team, paths)
     values, mapping, missing = [], [], []
     for s, slot in enumerate(context):
         slot = slot or dict(species=None, ability=None, item=None, nature=None, moves=[None]*4)
@@ -72,7 +74,7 @@ def generate(args):
         raise ValueError('generation configuration changed; use a fresh output directory')
     results.save(config_path, config)
     f = L.ensemble_fn(funcs)
-    h, _ = B.runtime()
+    h, _ = showdown_validator.runtime()
     validator = h.Validator()
     try:
         for i, trial in enumerate(args.manifest['trials']):
@@ -107,16 +109,16 @@ def generate(args):
                 decoded = copy.deepcopy(start)
                 for col in todo:
                     value = vocab.decode_field(col, int(x[0,col]))
-                    B.set_path(decoded, mapping[col], look.get(value, value))
+                    team_masks.set_path(decoded, mapping[col], look.get(value, value))
                 for path in trial['paths']:
                     if len(path) == 1 or path[1] == 'evs':
                         s = path[0]; choices = spreads.get(norm(decoded[s]['species']))
                         raw = choices[int(rng.integers(len(choices)))] if choices else h.sample_spread(rng)
-                        decoded[s]['evs'] = {k:int(raw.get(k,0)) for k in B.STATS}
-                B.validate_shape(decoded)
-                if B.masked(decoded,trial['paths']) != B.masked(start,trial['paths']):
+                        decoded[s]['evs'] = {k:int(raw.get(k,0)) for k in team_masks.STATS}
+                team_masks.validate_shape(decoded)
+                if team_masks.masked(decoded,trial['paths']) != team_masks.masked(start,trial['paths']):
                     raise ValueError('unmasked field changed')
-                error = validator(B.paste(decoded,h))
+                error = validator(showdown_validator.paste(decoded,h))
                 row.update(team=decoded, valid=error is None, error=error)
             except ValueError as exc:
                 row['error'] = str(exc)
@@ -142,7 +144,7 @@ def report(args):
              'Both battle sides use the same frozen behaviour-cloning policy, including learned team preview. Each candidate plays the frozen 50-battle schedule over 49 opponent teams. Runtime fingerprints and the exact-panel cache are shared with the original baseline. Policy RNG seeds match; Showdown RNG is not controlled.', '',
              'Input limitations: diffusion cannot read opponent pastes or Stat Points; its win-rate condition is a scalar. Stat Point fills use same-species corpus spreads, with a random legal spread for species absent from the corpus. These are system comparisons, not equal-input neural architecture comparisons. There is no search or surrogate reranking in this arm.', '',
              '| Task | Diffusion coverage | Legal diffusion | Legal Ling |', '|---|---:|---:|---:|']
-    for task in B.GRID:
+    for task in team_masks.GRID:
         trials = [t for t in m['trials'] if t['task']==task]
         llm = sum(json.loads((args.baseline/'completions'/(t['id']+'.json')).read_text())['valid'] for t in trials)
         lines.append(f"| {task} | {sum(rows[t['id']]['supported'] for t in trials)}/9 | {sum(rows[t['id']]['valid'] for t in trials)}/9 | {llm}/9 |")

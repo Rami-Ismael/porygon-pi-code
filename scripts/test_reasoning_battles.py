@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 import repo_paths  # puts src/ first on sys.path
 import results
+import showdown_validator
 import llm_baseline as B
 import reasoning_battles as P
 
@@ -14,7 +15,7 @@ class ParallelBattleTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        self.m = dict(format=B.FORMAT, seed=42, battles=50, seed_limit='unseeded simulator',
+        self.m = dict(format=showdown_validator.FORMAT, seed=42, battles=50, seed_limit='unseeded simulator',
                       opponents=[{'team_id': 1}, {'team_id': 2}],
                       trials=[dict(id='s0-item-1', start=0)])
         self.runs = [({}, self.root / a, copy.deepcopy(self.m)) for a in ['off', 'on']]

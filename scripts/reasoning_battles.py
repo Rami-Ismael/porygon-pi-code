@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import repo_paths  # puts src/ first on sys.path
 import results
+import showdown_validator
 import llm_baseline as B
 import reasoning_experiment as E
 
@@ -109,15 +110,15 @@ def worker(output, index, manifest, groups):
 def score(output, workers, backend=None):
     _, runs = E.load_runs(output)
     backend = study_backend(output, runs, backend)
-    h, db = B.runtime()
-    groups = plan(runs, lambda team: db.canonical_paste(B.paste(team, h)))
+    h, db = showdown_validator.runtime()
+    groups = plan(runs, lambda team: db.canonical_paste(showdown_validator.paste(team, h)))
     # Register teams and paste files before spawning: identical teams with
     # different schedules may be assigned to different workers.
     con = db.connect()
     validator = h.Validator()
     try:
         for group in groups:
-            tid = db.add_team(con, B.paste(group['team'], h), 'reasoning-parallel:' + output.name, validator)[0]
+            tid = db.add_team(con, showdown_validator.paste(group['team'], h), 'reasoning-parallel:' + output.name, validator)[0]
             db.paste_file(con, tid)
         for opponent in runs[0][2]['opponents']:
             db.paste_file(con, opponent['team_id'])

@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import urllib.request
 
 import repo_paths  # puts src/ first on sys.path
+import llm_completion
 import results
 import llm_baseline as B
 
@@ -37,10 +38,10 @@ def arm_configs(levels):
 
 
 def prepare(args):
-    parent = B.load_manifest(SimpleNamespace(output=args.parent))
+    parent = llm_completion.load_manifest(SimpleNamespace(output=args.parent))
     model = getattr(args, 'model', None) or parent['model']
     provider = getattr(args, 'provider', None) or 'novita'
-    if model not in (B.MODEL, 'inception/mercury-2.5'):
+    if model not in (llm_completion.MODEL, 'inception/mercury-2.5'):
         raise ValueError('model must be explicitly supported by the experiment runner')
     arms = arm_configs(args.arms)
     if args.replicates < 1 or args.max_tokens < 1 or args.request_timeout <= 0:
@@ -70,11 +71,11 @@ def prepare(args):
                                                parent_manifest_sha256=results.digest(parent)))
             relative = f'{arm}/r{replicate}'
             # Freeze prompt bytes as well as manifests (prompt helpers may read local data).
-            request_hashes = {t['id']: results.digest(B.completion_payload(m, t)) for t in m['trials']}
+            request_hashes = {t['id']: results.digest(llm_completion.completion_payload(m, t)) for t in m['trials']}
             study['runs'].append(dict(path=relative, arm=arm, replicate=replicate,
                                       manifest_sha256=results.digest(m), request_hashes=request_hashes))
             results.save(args.output / relative / 'manifest.json', m)
-            results.save(args.output / relative / 'example-request.json', B.completion_payload(m, m['trials'][0]))
+            results.save(args.output / relative / 'example-request.json', llm_completion.completion_payload(m, m['trials'][0]))
     study['planned_calls'] = len(ids) * len(study['runs'])
     results.save(args.output / 'experiment.json', study)
     print(json.dumps(dict(output=str(args.output), planned_calls=study['planned_calls'], arms=list(arms))))
@@ -87,11 +88,11 @@ def load_runs(output):
     runs = []
     for entry in study['runs']:
         folder = output / entry['path']
-        m = B.load_manifest(SimpleNamespace(output=folder))
+        m = llm_completion.load_manifest(SimpleNamespace(output=folder))
         if results.digest(m) != entry['manifest_sha256']:
             raise ValueError(f'manifest changed: {folder}')
         for t in m['trials']:
-            if results.digest(B.completion_payload(m, t)) != entry['request_hashes'][t['id']]:
+            if results.digest(llm_completion.completion_payload(m, t)) != entry['request_hashes'][t['id']]:
                 raise ValueError(f'prompt or request changed: {folder}/{t["id"]}')
         runs.append((entry, folder, m))
     return study, runs

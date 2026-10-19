@@ -7,7 +7,8 @@ import unittest
 
 import repo_paths  # puts src/ first on sys.path
 import results
-from llm_baseline import GRID, STATS, apply_completion, masked, paths_for
+from llm_completion import apply_completion
+from team_masks import GRID, STATS, masked, paths_for
 
 
 class CompletionContractTests(unittest.TestCase):
