@@ -105,6 +105,22 @@ class Training(unittest.TestCase):
         net, cfg, _ = L.load_net("F1_final_medium_noheldout", V)               # the retrain loads
         self.assertEqual(cfg["epochs"], 80)
 
+    def test_only_allow_1_lets_a_contaminated_checkpoint_load(self):
+        src_first()
+        import os, lossdown as L
+        from unittest import mock
+        class Reached(Exception): pass
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(L, "CK", Path(tmp)), \
+                mock.patch.object(L, "load_checkpoint", side_effect=Reached):
+            (Path(tmp) / "F1_final_medium.pt").touch()
+            for value in (None, "", "0", "false", "no", "true", "yes"):     # any value but "1" stays closed
+                env = {k: v for k, v in os.environ.items() if k != "ALLOW_CONTAMINATED_CHECKPOINTS"}
+                if value is not None: env["ALLOW_CONTAMINATED_CHECKPOINTS"] = value
+                with mock.patch.dict(os.environ, env, clear=True), self.subTest(value=value):
+                    with self.assertRaises(H.HeldoutLeak): L.load_net("F1_final_medium", None)
+            with mock.patch.dict(os.environ, {"ALLOW_CONTAMINATED_CHECKPOINTS": "1"}):
+                with self.assertRaises(Reached): L.load_net("F1_final_medium", None)  # past the guard
+
     def test_no_contaminated_checkpoint_is_left_in_the_load_path(self):
         import os
         home = Path.home()

@@ -767,9 +767,11 @@ def load_net(name, V):
     """Load a lossdown checkpoint. Everything trained before ranks 51-100 were held out was moved to
     CK/_contaminated_heldout/ (2026-10-14); a name that lives there, or any checkpoint without 'noheldout'
     in its name, is refused with HeldoutLeak. Re-scoring a historical benchmark means moving the file back
-    AND setting ALLOW_CONTAMINATED_CHECKPOINTS=1: never for generating or searching."""
+    AND setting ALLOW_CONTAMINATED_CHECKPOINTS=1: never for generating or searching. Only "1" opens it;
+    "0", "false" or any other value keeps it closed."""
     quarantined = (CK / "_contaminated_heldout" / f"{name}.pt").exists()
-    if (quarantined or ("noheldout" not in name and (CK / f"{name}.pt").exists())) and not os.environ.get("ALLOW_CONTAMINATED_CHECKPOINTS"):
+    allowed = os.environ.get("ALLOW_CONTAMINATED_CHECKPOINTS") == "1"
+    if (quarantined or ("noheldout" not in name and (CK / f"{name}.pt").exists())) and not allowed:
         raise HO.HeldoutLeak(f"checkpoint {name!r} was trained with ranks 51-100 in its data; use the "
                              f"'_noheldout' retrain (see docs/heldout-51-100.md)")
     ck = load_checkpoint(CK / f"{name}.pt", map_location=DEV)

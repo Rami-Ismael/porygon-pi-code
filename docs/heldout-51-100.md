@@ -102,7 +102,7 @@ Everything trained or fitted with the set in its data was **moved, not deleted**
 
 `lossdown.load_net` raises `HeldoutLeak` for a name in that folder or any checkpoint without `noheldout`
 in its name. Re-scoring a historical benchmark means moving a file back deliberately **and** setting
-`ALLOW_CONTAMINATED_CHECKPOINTS=1`. The pre-purge backups are the restore point for the deleted matrix
+`ALLOW_CONTAMINATED_CHECKPOINTS=1` (only `1`: `0`, `false` or any other value keeps the guard closed). The pre-purge backups are the restore point for the deleted matrix
 entries and the plan matrix; they hold the leak by design, so they live in the quarantine folder.
 
 `regmb v2` was retrained clean too (2026-10-14). Its `training-regulation.json` is the manifest itself and
