@@ -5,6 +5,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 
+import repo_paths  # puts src/ first on sys.path
 from llm_baseline import GRID, STATS, apply_completion, masked, paths_for
 
 

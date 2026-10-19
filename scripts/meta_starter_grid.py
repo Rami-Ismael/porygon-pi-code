@@ -12,13 +12,14 @@ import sqlite3
 import subprocess
 import sys
 import time
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 from resume_full_grid import restore_runtime
 
-BASE=B.ROOT/'results/llm-baseline-meta-starters'
+BASE=ROOT/'results/llm-baseline-meta-starters'
 SELECTION=BASE/'diffusion-selection.json'
 selection=json.loads(SELECTION.read_text()) if SELECTION.exists() else {}
-DIFF=B.ROOT/'results'/selection.get('results','diffusion-baseline-meta-starters')
+DIFF=ROOT/'results'/selection.get('results','diffusion-baseline-meta-starters')
 MEMBERS=selection.get('members',['F1_final_medium_noheldout_regmb_v2','G2_family_matrix_noprtrain_noheldout_regmb_v2'])
 
 
@@ -58,10 +59,10 @@ def random_control(team,paths,tables,rng,h,validator,regulation):
 def prepare():
     import numpy as np
     if (BASE/'manifest.json').exists(): return
-    old=json.loads((B.ROOT/'results/llm-baseline-full-grid/manifest.json').read_text())
+    old=json.loads((ROOT/'results/llm-baseline-full-grid/manifest.json').read_text())
     h,db=B.runtime()
     tables=h.build_tables()
-    regulation=json.loads((B.ROOT/'data/regmb-vocabulary.json').read_text())
+    regulation=json.loads((ROOT/'data/regmb-vocabulary.json').read_text())
     m={k:copy.deepcopy(v) for k,v in old.items() if k not in ('starts','trials','extension','source_sha256')}
     m.update(seed=20261010,starts=[],trials=[],starter_kind='frozen meta pool',exclude_starter_team_ids=[o['team_id'] for o in old['opponents']],
              starter_provenance=[],parent_manifest_sha256=B.digest(old),source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
@@ -127,7 +128,7 @@ def run():
         os.environ['OPENROUTER_API_KEY']=getpass.getpass('OpenRouter key (not saved): ')
     def launch(name,argv):
         log=(BASE/(name+'.log')).open('a')
-        proc=subprocess.Popen([sys.executable,str(B.ROOT/'scripts'/argv[0]),*argv[1:]],stdout=log,stderr=subprocess.STDOUT)
+        proc=subprocess.Popen([sys.executable,str(ROOT/'scripts'/argv[0]),*argv[1:]],stdout=log,stderr=subprocess.STDOUT)
         log.close()
         return proc
     jobs=[('ling-'+str(i),['llm_baseline.py','complete','--output',str(BASE),'--shards','4','--shard',str(i)]) for i in range(4)]
@@ -164,7 +165,7 @@ def report():
     B.save(DIFF/'summary.json',dict(supported=supported,legal=s['diffusion']['legal'],scored=s['diffusion']['saved_labels'],pairs=pairs))
     version=selection.get('version','v2')
     lines=['# Meta-starter full grid','',f"49 frozen meta teams; 4,998 tasks. Ling: {s['ling']['legal']} legal. Diffusion: {s['diffusion']['legal']} legal. API cost: ${s['ling']['cost_usd']:.6f}.",'',f'{len(pairs)} jointly scored tasks. Each starter is excluded from its own prompt and opponent panel. Each panel contains 50 battles over the other 48 opponents. Diffusion: F1/G2 {version}, ask 0.5, guidance 2, temperature 1. BC policy on both sides. This is an in-pool improvement experiment, not held-out generalization.']
-    (B.ROOT/'docs/meta-starter-grid-results.md').write_text('\n'.join(lines)+'\n')
+    (ROOT/'docs/meta-starter-grid-results.md').write_text('\n'.join(lines)+'\n')
 
 
 if __name__=='__main__':

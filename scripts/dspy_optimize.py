@@ -21,6 +21,7 @@ from types import SimpleNamespace
 import dspy
 
 import dspy_structure as S
+import repo_paths  # puts src/ first on sys.path
 import llm_baseline as B
 
 SPLITS = ('train', 'dev')

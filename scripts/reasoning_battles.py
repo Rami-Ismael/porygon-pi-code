@@ -9,6 +9,7 @@ from pathlib import Path
 import time
 from types import SimpleNamespace
 
+import repo_paths  # puts src/ first on sys.path
 import llm_baseline as B
 import reasoning_experiment as E
 

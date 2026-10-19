@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import time
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 
 MEMBERS = ["F1_final_medium_noheldout", "G2_family_matrix_noprtrain_noheldout"]
@@ -64,7 +65,7 @@ def generate(args):
         funcs.append(L.logprobs_fn(net, tables, rules))
         config['checkpoints'][name] = dict(sha256=hashlib.sha256((L.CK / (name+'.pt')).read_bytes()).hexdigest(), cfg=cfg)
     config['source_sha256'] = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in
-                              [Path(__file__), B.ROOT/'src/lossdown.py', B.ROOT/'src/encode.py']}
+                              [Path(__file__), ROOT/'src/lossdown.py', ROOT/'src/encode.py']}
     config_path = args.output/'generation-config.json'
     if config_path.exists() and json.loads(config_path.read_text()) != json.loads(json.dumps(config)):
         raise ValueError('generation configuration changed; use a fresh output directory')
@@ -167,7 +168,7 @@ def report(args):
         if r['supported'] and not r['valid']: lines.append(f"- {tid}: {r['error']}")
     text = '\n'.join(lines)+'\n'
     (args.output/'report.md').write_text(text)
-    (B.ROOT/'docs/diffusion-baseline-comparison.md').write_text(text)
+    (ROOT/'docs/diffusion-baseline-comparison.md').write_text(text)
     B.save(args.output/'summary.json',dict(supported=supported,legal=valid,scored=len(labels),pairs=pairs))
     print(json.dumps(dict(supported=supported,legal=valid,scored=len(labels),pairs=pairs)))
 
@@ -175,8 +176,8 @@ def report(args):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('command',choices=['generate','battle','report'])
-    p.add_argument('--baseline',type=Path,default=B.ROOT/'results/llm-baseline-instant-pilot')
-    p.add_argument('--output',type=Path,default=B.ROOT/'results/diffusion-baseline-f1g2-strict')
+    p.add_argument('--baseline',type=Path,default=ROOT/'results/llm-baseline-instant-pilot')
+    p.add_argument('--output',type=Path,default=ROOT/'results/diffusion-baseline-f1g2-strict')
     p.add_argument('--members',nargs='+',default=MEMBERS)
     args = p.parse_args(); args.output=args.output.resolve(); args.baseline=args.baseline.resolve()
     args.output.mkdir(parents=True,exist_ok=True)

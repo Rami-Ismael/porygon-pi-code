@@ -10,10 +10,11 @@ import re
 import subprocess
 import sys
 from types import SimpleNamespace
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 import prompt_versions as V
 
-OUT=B.ROOT/'results/prompt-regulation-test'
+OUT=ROOT/'results/prompt-regulation-test'
 ARMS=['mb-original-v1','mb-regulation-v3']
 MIN_STARTERS=6
 FAILURES=[('truncated','truncated'),('Expecting|Extra data|Unterminated|delimiter|Invalid','unparseable JSON'),
@@ -55,7 +56,7 @@ def run(args):
     if todo and not os.environ.get('OPENROUTER_API_KEY'):
         os.environ['OPENROUTER_API_KEY']=getpass.getpass('OpenRouter key (not saved): ')
     # All arms run at the same time, so provider drift cannot favour one prompt.
-    jobs=[(f,subprocess.Popen([sys.executable,str(B.ROOT/'scripts/llm_baseline.py'),'complete','--output',str(f)],
+    jobs=[(f,subprocess.Popen([sys.executable,str(ROOT/'scripts/llm_baseline.py'),'complete','--output',str(f)],
                                stdout=(f/'generation.log').open('a'),stderr=subprocess.STDOUT)) for f in todo]
     failed=[str(f) for f,job in jobs if job.wait()]
     report(args)
@@ -175,7 +176,7 @@ def report(args):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('command',choices=['prepare','run','battle','report'])
-    p.add_argument('--parent',type=Path,default=B.ROOT/'results/ling-mb-prompt-comparison',help='folder holding the frozen 147-task manifest')
+    p.add_argument('--parent',type=Path,default=ROOT/'results/ling-mb-prompt-comparison',help='folder holding the frozen 147-task manifest')
     p.add_argument('--output',type=Path,default=OUT);p.add_argument('--replicates',type=int,default=2)
     p.add_argument('--workers',type=int,default=1);p.add_argument('--worker',type=int)
     p.add_argument('--battle-backend',choices=['legacy','fast'],default='fast',

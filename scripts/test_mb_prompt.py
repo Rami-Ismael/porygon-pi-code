@@ -2,6 +2,7 @@ import copy
 import json
 import unittest
 import frozen as F
+import repo_paths  # puts src/ first on sys.path
 import llm_baseline as B
 
 

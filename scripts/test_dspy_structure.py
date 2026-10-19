@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 import reasoning_experiment as E
 
@@ -395,7 +396,7 @@ class StatisticsTests(unittest.TestCase):
         self.assertEqual(X.verdict(dict(mean=0, low=-.03, high=.02), .01), 'unclear: interval includes zero')
 
     def test_headroom_reads_published_mask_lab_data(self):
-        rows = X.headroom(SimpleNamespace(data=B.ROOT.parent / 'blog/mask-lab/data.json'))
+        rows = X.headroom(SimpleNamespace(data=ROOT.parent / 'blog/mask-lab/data.json'))
         off = next(r for r in rows if r['reasoning'] == 'off')
         self.assertEqual((off['attempts'], off['legal']), (420, 119))
         self.assertAlmostEqual(off['ceiling'], (119 + 72 + 48) / 420)

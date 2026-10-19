@@ -10,12 +10,13 @@ import random
 import subprocess
 import sys
 import time
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 
-PARENT=B.ROOT/'results/llm-baseline-meta-starters'
-DIFF=B.ROOT/'results/diffusion-baseline-meta-starters-v3'
-OUT=B.ROOT/'results/ling-mb-prompt-comparison'
-HERE=B.ROOT/'dashboard'
+PARENT=ROOT/'results/llm-baseline-meta-starters'
+DIFF=ROOT/'results/diffusion-baseline-meta-starters-v3'
+OUT=ROOT/'results/ling-mb-prompt-comparison'
+HERE=ROOT/'dashboard'
 
 
 def prepare():
@@ -88,7 +89,7 @@ def run():
     def command(logname,argv):
         with (OUT/logname).open('a') as log:
             subprocess.run([sys.executable,*argv],stdout=log,stderr=subprocess.STDOUT,check=True)
-    command('generation.log',[str(B.ROOT/'scripts/llm_baseline.py'),'complete','--output',str(OUT)])
+    command('generation.log',[str(ROOT/'scripts/llm_baseline.py'),'complete','--output',str(OUT)])
     B.save(OUT/'progress.json',dict(stage='waiting_for_main_battles'));publish()
     # Avoid simultaneous writers calculating the same exact-panel cache entry.
     while (read(PARENT/'pipeline-progress.json') or {}).get('status')!='complete':
@@ -98,7 +99,7 @@ def run():
     B.save(OUT/'progress.json',dict(stage='scoring'))
     frozen=OUT/'diffusion-reference';B.save(frozen/'manifest.json',m)
     for t in m['trials']:B.save(frozen/'completions'/(t['id']+'.json'),read(DIFF/'completions'/(t['id']+'.json')))
-    command('battles.log',[str(B.ROOT/'scripts/dense_grid_battles.py'),'--baseline',str(OUT),'--diffusion',str(frozen),'--workers','6'])
+    command('battles.log',[str(ROOT/'scripts/dense_grid_battles.py'),'--baseline',str(OUT),'--diffusion',str(frozen),'--workers','6'])
     B.save(OUT/'progress.json',dict(stage='complete'));publish()
 
 

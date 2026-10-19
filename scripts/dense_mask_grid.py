@@ -6,15 +6,16 @@ import json
 import random
 import shutil
 
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 
 
 def prepare():
     import numpy as np
-    source = B.ROOT / 'results/llm-baseline-instant-pilot'
-    old_diff = B.ROOT / 'results/diffusion-baseline-f1g2-regmb-v2'
-    target = B.ROOT / 'results/llm-baseline-full-grid'
-    diff = B.ROOT / 'results/diffusion-baseline-full-grid'
+    source = ROOT / 'results/llm-baseline-instant-pilot'
+    old_diff = ROOT / 'results/diffusion-baseline-f1g2-regmb-v2'
+    target = ROOT / 'results/llm-baseline-full-grid'
+    diff = ROOT / 'results/diffusion-baseline-full-grid'
     original = json.loads((source/'manifest.json').read_text())
     m = copy.deepcopy(original)
     m['grid'] = {task:list(range(1,len(B.paths_for(task))+1)) for task in B.GRID}
@@ -63,8 +64,8 @@ def prepare():
 
 def report():
     from types import SimpleNamespace
-    target=B.ROOT/'results/llm-baseline-full-grid'
-    diff=B.ROOT/'results/diffusion-baseline-full-grid'
+    target=ROOT/'results/llm-baseline-full-grid'
+    diff=ROOT/'results/diffusion-baseline-full-grid'
     m=json.loads((target/'manifest.json').read_text())
     B.report(SimpleNamespace(output=target))
     status=json.loads((target/'status.json').read_text())
@@ -84,7 +85,7 @@ def report():
             pairs.append(dict(trial=t['id'],start=t['start'],delta_pp=100*(d['wins']/50-a['wins']/50)))
     summary=dict(supported=sum(r['supported'] for r in rows),legal=sum(r['valid'] for r in rows),scored=scored,pairs=pairs)
     B.save(diff/'summary.json',summary)
-    old=json.loads((B.ROOT/'results/llm-baseline-instant-pilot/status.json').read_text())
+    old=json.loads((ROOT/'results/llm-baseline-instant-pilot/status.json').read_text())
     cost=status['reported_cost_usd']-old['reported_cost_usd']
     delta=sum(sum(r['delta_pp'] for r in pairs if r['start']==s)/sum(r['start']==s for r in pairs) for s in range(3))/3
     lines=['# Full mask grid results','',f"306 tasks; 63 reused and 243 additional Ling calls. Additional API cost: ${cost:.8f}; combined cost: ${status['reported_cost_usd']:.8f}.",'',f"Ling: {status['legal_completions']}/306 legal. Diffusion: {summary['legal']}/306 legal, {summary['supported']}/306 supported. {len(pairs)} jointly scored tasks.",'',f'Equal-start-weighted diffusion minus Ling: {delta:+.2f} percentage points on jointly scored tasks. Three independent starts: descriptive only, not proof of a winner.','', 'Diffusion uses the full-regulation F1/G2 v2 ensemble, ask 0.5, guidance 2, temperature 1. All battles use the frozen behavior-cloning policy on both sides and the original 50-battle meta-opponent schedule. Policy seeds match; simulator randomness is not fixed. Invalid completions are retained without retries. Random-fill controls are team completions, not a random-move battle policy.','', '| Task | Mask sizes | Ling legal | Diffusion legal |','|---|---|---:|---:|']
@@ -93,7 +94,7 @@ def report():
         legal=sum(json.loads((target/'completions'/(t['id']+'.json')).read_text())['valid'] for t in ts)
         dl=sum(r['valid'] for t,r in zip(m['trials'],rows) if t['task']==task)
         lines.append(f'| {task} | 1–{max(ks)} | {legal}/{len(ts)} | {dl}/{len(ts)} |')
-    (B.ROOT/'docs/dense-mask-grid-results.md').write_text('\n'.join(lines)+'\n')
+    (ROOT/'docs/dense-mask-grid-results.md').write_text('\n'.join(lines)+'\n')
     print(json.dumps(dict(added_cost=cost,total_cost=status['reported_cost_usd'],ling_legal=status['legal_completions'],diffusion_legal=summary['legal'],paired=len(pairs),delta_pp=delta)))
 
 

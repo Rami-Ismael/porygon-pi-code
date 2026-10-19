@@ -22,6 +22,7 @@ import time
 from types import SimpleNamespace
 import urllib.request
 
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 import reasoning_experiment as E
 
@@ -602,7 +603,7 @@ def main():
                         'when their labels came from the other engine (old labels are archived)')
     p.add_argument('--win-margin', type=float, default=0.01)
     p.add_argument('--legality-margin', type=float, default=0.05)
-    p.add_argument('--data', type=Path, default=B.ROOT.parent / 'blog/mask-lab/data.json')
+    p.add_argument('--data', type=Path, default=ROOT.parent / 'blog/mask-lab/data.json')
     args = p.parse_args()
     if args.command == 'headroom':
         return headroom(args)

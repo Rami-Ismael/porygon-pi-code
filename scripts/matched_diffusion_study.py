@@ -9,13 +9,14 @@ import multiprocessing
 from pathlib import Path
 import time
 from types import SimpleNamespace
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 import diffusion_baseline_v3 as D
 import reasoning_battles as RB
 import reasoning_experiment as E
 
-OUT=B.ROOT/'results/diffusion-matched-20261013'
-SOURCE=B.ROOT/'results/mercury-reasoning-20261013'
+OUT=ROOT/'results/diffusion-matched-20261013'
+SOURCE=ROOT/'results/mercury-reasoning-20261013'
 
 def snapshot(stage):
     m=json.loads((OUT/'r0/manifest.json').read_text())
@@ -30,7 +31,7 @@ def snapshot(stage):
             rows.append(dict(arm='diffusion',replicate=rep,trial=t['id'],start=t['start'],task=t['task'],returned=r is not None,legal=bool(r and r['valid']),supported=bool(r and r['supported']),win_rate=lab['wins']/50 if lab else None,cache_key=lab['cache_key'] if lab else None))
     pairs={}
     for study in ['mercury-reasoning-20261013','reasoning-expanded-20261012']:
-        old=json.loads((B.ROOT/'results'/study/'status.json').read_text())
+        old=json.loads((ROOT/'results'/study/'status.json').read_text())
         assert old['complete']
         for arm in old['arms']:
             controls={(r['trial'],r['replicate']):r for r in old['rows'] if r['arm']==arm}
@@ -64,7 +65,7 @@ def run():
                 else:B.save(path,data)
         audit=OUT/'preservation-audit.json'
         if not audit.exists():
-            hashes={str(f):hashlib.sha256(f.read_bytes()).hexdigest() for study in ['mercury-reasoning-20261013','reasoning-expanded-20261012'] for f in (B.ROOT/'results'/study).glob('*/r*/**/*.json')}
+            hashes={str(f):hashlib.sha256(f.read_bytes()).hexdigest() for study in ['mercury-reasoning-20261013','reasoning-expanded-20261012'] for f in (ROOT/'results'/study).glob('*/r*/**/*.json')}
             B.save(audit,dict(before=hashes))
         B.save(OUT/'design.json',dict(starters=20,masks=140,repeats=3,members=D.MEMBERS,generation_seeds=[m['seed']+100000*rep for rep in range(3)],battle_seed=m['seed'],attempts=1,stat_points='Corpus spread or random legal fallback, not neural prediction',input='Categorical context only; no opponent-paste input',comparison='Matched complete systems, not equal-input architecture or reasoning effect',started_at=time.time()))
         snapshot('generating')

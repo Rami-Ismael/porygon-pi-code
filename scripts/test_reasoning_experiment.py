@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch, Mock, AsyncMock
 
+import repo_paths  # puts src/ first on sys.path
 import llm_baseline as B
 import reasoning_experiment as E
 

@@ -17,8 +17,7 @@ import time
 import urllib.error
 import urllib.request
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
+from repo_paths import ROOT  # also puts src/ first on sys.path
 MODEL = "inclusionai/ling-3.0-flash-vl"
 FORMAT = "gen9championsvgc2026regmb"
 BC_SHA256 = "57f5edcab415cf6ccc1b6231923c8b66d3b1b7249b6b2562b97531471e4ca60b"

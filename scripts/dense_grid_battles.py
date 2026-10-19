@@ -4,10 +4,11 @@ import fcntl
 import concurrent.futures
 import json
 from types import SimpleNamespace
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 
-BASE=B.ROOT/'results/llm-baseline-full-grid'
-DIFF=B.ROOT/'results/diffusion-baseline-full-grid'
+BASE=ROOT/'results/llm-baseline-full-grid'
+DIFF=ROOT/'results/diffusion-baseline-full-grid'
 
 
 def worker(index,count,baseline=None,diffusion=None,backend='fast'):

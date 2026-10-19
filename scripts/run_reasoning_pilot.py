@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 import reasoning_experiment as E
 
@@ -119,7 +120,7 @@ def main():
             E.report(args)
     if outcome['stage'] != 'complete':
         return
-    subprocess.run([sys.executable, str(B.ROOT / 'scripts/reasoning_battles.py'),
+    subprocess.run([sys.executable, str(ROOT / 'scripts/reasoning_battles.py'),
                     '--output', str(args.output), '--workers', str(args.workers)], check=True)
 
 

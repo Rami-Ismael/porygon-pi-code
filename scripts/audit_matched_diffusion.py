@@ -5,14 +5,15 @@ import hashlib
 import json
 from pathlib import Path
 import statistics
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 import lossdown as L
 import reasoning_experiment as E
 
-P=B.ROOT/'results/diffusion-matched-20261013'
+P=ROOT/'results/diffusion-matched-20261013'
 s=json.loads((P/'status.json').read_text());assert s['complete']
-parent=json.loads((B.ROOT/'results/mercury-reasoning-20261013/off/r0/manifest.json').read_text())
-config=json.loads((B.ROOT/'results/mercury-reasoning-20261013/off/r0/battle-config.json').read_text())
+parent=json.loads((ROOT/'results/mercury-reasoning-20261013/off/r0/manifest.json').read_text())
+config=json.loads((ROOT/'results/mercury-reasoning-20261013/off/r0/battle-config.json').read_text())
 audit=json.loads((P/'preservation-audit.json').read_text())
 assert all(hashlib.sha256(Path(f).read_bytes()).hexdigest()==h for f,h in audit['before'].items())
 labels=collections.defaultdict(list);configs=[];rows=[];seconds=[]
@@ -41,7 +42,7 @@ for f,h in config['fingerprints'].items():assert hashlib.sha256(Path(f).read_byt
 for f in P.glob('battle-workers/*/battle-config.json'):assert json.loads(f.read_text())==config
 comparisons={}
 for name in ['mercury-reasoning-20261013','reasoning-expanded-20261012']:
- old=json.loads((B.ROOT/'results'/name/'status.json').read_text());assert old['complete']
+ old=json.loads((ROOT/'results'/name/'status.json').read_text());assert old['complete']
  for arm in old['arms']:
   baseline={(r['trial'],r['replicate']):r for r in old['rows'] if r['arm']==arm}
   legal=[];wins=[];both=[]

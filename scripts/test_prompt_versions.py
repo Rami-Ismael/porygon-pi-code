@@ -1,6 +1,7 @@
 import copy
 import json
 import unittest
+from repo_paths import ROOT  # also puts src/ first on sys.path
 import llm_baseline as B
 import prompt_versions as V
 
@@ -11,7 +12,7 @@ class PromptVersionTests(unittest.TestCase):
             self.assertEqual(V.system_text(version),(V.SNAPSHOTS/(version+'.system.txt')).read_text(),version)
 
     def test_every_version_is_logged(self):
-        log=(B.ROOT/'docs/prompt-changelog.md').read_text()
+        log=(ROOT/'docs/prompt-changelog.md').read_text()
         for version in V.VERSIONS:
             self.assertIn(version,log)
             self.assertIn(V.system_sha256(version)[:12],log)
@@ -26,7 +27,7 @@ class PromptVersionTests(unittest.TestCase):
         self.assertEqual(V.messages(V.REGULATION,V.FIXTURE,V.FIXTURE_TRIAL),V.messages(V.REGULATION,altered,V.FIXTURE_TRIAL))
 
     def test_reference_matches_the_simulator_vocabulary(self):
-        reg=json.loads((B.ROOT/'data/regmb-vocabulary.json').read_text());text=V.regulation_reference()
+        reg=json.loads((ROOT/'data/regmb-vocabulary.json').read_text());text=V.regulation_reference()
         for field in ('species','item','nature'):
             for value in reg['values'][field]:
                 if value:self.assertIn(reg['names'].get(value,value),text)

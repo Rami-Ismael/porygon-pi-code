@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+import repo_paths  # puts src/ first on sys.path
 import llm_baseline as B
 
 

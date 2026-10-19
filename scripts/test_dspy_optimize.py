@@ -6,6 +6,7 @@ import unittest
 import unittest.mock
 from unittest.mock import Mock
 
+import repo_paths  # puts src/ first on sys.path
 import llm_baseline as B
 
 try:

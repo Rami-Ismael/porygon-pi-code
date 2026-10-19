@@ -18,6 +18,7 @@ import time
 import urllib.error
 import urllib.request
 
+import repo_paths  # puts src/ first on sys.path
 import llm_baseline as B
 
 
