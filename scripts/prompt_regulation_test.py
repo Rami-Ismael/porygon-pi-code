@@ -11,6 +11,7 @@ import subprocess
 import sys
 from types import SimpleNamespace
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 import prompt_versions as V
 
@@ -38,12 +39,12 @@ def prepare(args):
     for arm in ARMS:
         for replicate in range(args.replicates):
             m=copy.deepcopy(parent);m.pop('prompt_comparison',None)
-            m.update(prompt_version=arm,prompt_test=dict(parent_manifest_sha256=B.digest(parent),replicate=replicate,
+            m.update(prompt_version=arm,prompt_test=dict(parent_manifest_sha256=results.digest(parent),replicate=replicate,
                      system_sha256=V.system_sha256(arm,m),arms=ARMS,starters=sorted(starters)))
             if arm==V.ORIGINAL:del m['prompt_version']  # identical request bytes to the first run
             path=folder(arm,replicate)/'manifest.json'
             if path.exists():assert read(path)==m,f'{path} differs; use another --output'
-            else:B.save(path,m)
+            else:results.save(path,m)
     print(json.dumps(dict(prepared=str(OUT),arms=ARMS,replicates=args.replicates,tasks=len(parent['trials']),
                           starters=len(starters),calls=len(ARMS)*args.replicates*len(parent['trials']))))
 
@@ -72,16 +73,16 @@ def battle_worker(index,count,backend='fast'):
             r=read(f/'completions'/(t['id']+'.json'))
             if r and r['valid'] and not (f/'labels'/('llm-'+t['id']+'.json')).exists():jobs.append((tag+'-'+t['id'],r['team'],f/'labels'/('llm-'+t['id']+'.json')))
     # Identical teams always go to the same process, preventing cache races.
-    jobs=[j for j in jobs if int(B.digest(db.canonical_paste(B.paste(j[1],h))),16)%count==index]
-    out=OUT/'workers'/str(index);B.save(out/'manifest.json',m)
+    jobs=[j for j in jobs if int(results.digest(db.canonical_paste(B.paste(j[1],h))),16)%count==index]
+    out=OUT/'workers'/str(index);results.save(out/'manifest.json',m)
     try:B.battle(SimpleNamespace(output=out,battle_backend=backend),candidates_override=[(label,team) for label,team,_ in jobs])
     finally:
         for label,_,dest in jobs:
             done=read(out/'labels'/(label+'.json'))
             if done:
-                B.save(dest,done)
+                results.save(dest,done)
                 # Records the destination's engine, so a later run does not archive it again.
-                if not (dest.parent.parent/'battle-config.json').exists():B.save(dest.parent.parent/'battle-config.json',read(out/'battle-config.json'))
+                if not (dest.parent.parent/'battle-config.json').exists():results.save(dest.parent.parent/'battle-config.json',read(out/'battle-config.json'))
     return len(jobs)
 
 
@@ -170,7 +171,7 @@ def report(args):
             lines+=['','Mean win rate of every legal completion that was battled: '+'; '.join(f'`{arm}` {sum(v)/len(v):.3f} over {len(v)} teams' for arm,v in scored.items())+'.']
     lines+=['','Rejected responses by reason:','','| Reason | '+' | '.join(f'`{a}`' for a in ARMS)+' |','|---|---:|---:|']
     lines+=[f'| {name} | {why[old][name]} | {why[new][name]} |' for name in sorted(set(why[old])|set(why[new]),key=lambda n:-why[old][n]-why[new][n])]
-    B.save(OUT/'status.json',status);(OUT/'report.md').write_text('\n'.join(lines)+'\n')
+    results.save(OUT/'status.json',status);(OUT/'report.md').write_text('\n'.join(lines)+'\n')
     print('\n'.join(lines))
 
 

@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import urllib.request
 
 import repo_paths  # puts src/ first on sys.path
+import results
 import llm_baseline as B
 
 
@@ -55,10 +56,10 @@ def prepare(args):
         raise ValueError('the existing battle runner requires 50-battle panels')
     if args.output.exists() and any(args.output.iterdir()):
         raise ValueError('output must be empty; use run/battle/report to resume')
-    study = dict(schema=1, parent_manifest_sha256=B.digest(parent),
+    study = dict(schema=1, parent_manifest_sha256=results.digest(parent),
                  model=model, format=parent['format'], arms=arms,
                  replicates=args.replicates, max_tokens=args.max_tokens,
-                 opponents_sha256=B.digest(parent['opponents']), seed=parent['seed'], runs=[])
+                 opponents_sha256=results.digest(parent['opponents']), seed=parent['seed'], runs=[])
     for arm, reasoning in arms.items():
         for replicate in range(args.replicates):
             m = copy.deepcopy(parent)
@@ -66,16 +67,16 @@ def prepare(args):
                      request_timeout=args.request_timeout, replicates=1,
                      provider={'order': [provider], 'allow_fallbacks': False, 'require_parameters': True},
                      reasoning_experiment=dict(arm=arm, replicate=replicate,
-                                               parent_manifest_sha256=B.digest(parent)))
+                                               parent_manifest_sha256=results.digest(parent)))
             relative = f'{arm}/r{replicate}'
             # Freeze prompt bytes as well as manifests (prompt helpers may read local data).
-            request_hashes = {t['id']: B.digest(B.completion_payload(m, t)) for t in m['trials']}
+            request_hashes = {t['id']: results.digest(B.completion_payload(m, t)) for t in m['trials']}
             study['runs'].append(dict(path=relative, arm=arm, replicate=replicate,
-                                      manifest_sha256=B.digest(m), request_hashes=request_hashes))
-            B.save(args.output / relative / 'manifest.json', m)
-            B.save(args.output / relative / 'example-request.json', B.completion_payload(m, m['trials'][0]))
+                                      manifest_sha256=results.digest(m), request_hashes=request_hashes))
+            results.save(args.output / relative / 'manifest.json', m)
+            results.save(args.output / relative / 'example-request.json', B.completion_payload(m, m['trials'][0]))
     study['planned_calls'] = len(ids) * len(study['runs'])
-    B.save(args.output / 'experiment.json', study)
+    results.save(args.output / 'experiment.json', study)
     print(json.dumps(dict(output=str(args.output), planned_calls=study['planned_calls'], arms=list(arms))))
 
 
@@ -87,10 +88,10 @@ def load_runs(output):
     for entry in study['runs']:
         folder = output / entry['path']
         m = B.load_manifest(SimpleNamespace(output=folder))
-        if B.digest(m) != entry['manifest_sha256']:
+        if results.digest(m) != entry['manifest_sha256']:
             raise ValueError(f'manifest changed: {folder}')
         for t in m['trials']:
-            if B.digest(B.completion_payload(m, t)) != entry['request_hashes'][t['id']]:
+            if results.digest(B.completion_payload(m, t)) != entry['request_hashes'][t['id']]:
                 raise ValueError(f'prompt or request changed: {folder}/{t["id"]}')
         runs.append((entry, folder, m))
     return study, runs
@@ -110,7 +111,7 @@ def run(args):
             raise ValueError('model does not advertise the requested effort levels; use --arms off on')
         if capabilities.get('mandatory'):
             raise ValueError('model requires reasoning and cannot supply an off control')
-        B.save(args.output / 'reasoning-capabilities.json', capabilities)
+        results.save(args.output / 'reasoning-capabilities.json', capabilities)
     from openrouter_generation import Job, Options, generate
     # Freeze dispatch order across arms/repeats; completion order may differ.
     jobs = []
@@ -245,7 +246,7 @@ def report(args):
                   by_task_k={f'{task}:{k}': summarize([r for r in rows if r['task'] == task and r['k'] == k],
                                                      study['arms'], study['seed'])
                              for task, k in sorted({(r['task'], r['k']) for r in rows})})
-    B.save(args.output / 'status.json', status)
+    results.save(args.output / 'status.json', status)
     lines = ['# Reasoning experiment', '', f"Model: `{study['model']}`; format: `{study['format']}`.",
              f"Frozen opponent pool: `{study['opponents_sha256']}`. Complete: {status['complete']}.", '',
              '| Arm | Returned / planned | Legal | Legality | Scored | Mean win rate | Reported cost USD |',

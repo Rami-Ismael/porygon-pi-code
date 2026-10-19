@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 import repo_paths  # puts src/ first on sys.path
+import results
 import llm_baseline as B
 
 
@@ -12,8 +13,8 @@ class RecoveryTests(unittest.TestCase):
     def test_atomic_save_leaves_readable_final_file(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'completion.json'
-            B.save(p,{'response':'original'})
-            B.save(p,{'response':'replacement'})
+            results.save(p,{'response':'original'})
+            results.save(p,{'response':'replacement'})
             self.assertEqual(json.loads(p.read_text()),{'response':'replacement'})
             self.assertFalse(p.with_suffix('.json.tmp').exists())
 
@@ -30,9 +31,9 @@ class RecoveryTests(unittest.TestCase):
         h=SimpleNamespace(Validator=Validator,slot_to_text=lambda s:s['species'])
         with tempfile.TemporaryDirectory() as d:
             output=Path(d)
-            B.save(output/'manifest.json',manifest)
+            results.save(output/'manifest.json',manifest)
             p=output/'completions/s0-item-1.json'
-            B.save(p,dict(request_hash=B.digest(payload),response=response,valid=False))
+            results.save(p,dict(request_hash=results.digest(payload),response=response,valid=False))
             with patch.object(B,'runtime',return_value=(h,None)),patch.dict(B.os.environ,{},clear=True),patch.object(B.urllib.request,'urlopen') as network:
                 B.complete(SimpleNamespace(output=output))
                 B.complete(SimpleNamespace(output=output))

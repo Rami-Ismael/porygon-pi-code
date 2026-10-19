@@ -19,6 +19,7 @@ import urllib.error
 import urllib.request
 
 import repo_paths  # puts src/ first on sys.path
+import results
 import llm_baseline as B
 
 
@@ -159,7 +160,7 @@ async def _generate(jobs, output, options, transport, validate, key, stop):
             raise ValueError(f'duplicate output path: {path}')
         seen.add(path)
         payload = B.completion_payload(job.manifest, job.trial)
-        request_hash = B.digest(payload)
+        request_hash = results.digest(payload)
         if path.exists():
             record = json.loads(path.read_text())
             if record['request_hash'] != request_hash:
@@ -185,7 +186,7 @@ async def _generate(jobs, output, options, transport, validate, key, stop):
 
     def status(stage):
         try:
-            B.save(output / 'generation-status.json', dict(counters, stage=stage,
+            results.save(output / 'generation-status.json', dict(counters, stage=stage,
                 concurrency=gate.limit, in_flight=len(active), queued=len(queue),
                 cooldown_seconds=max(0, gate.cooldown-time.monotonic()),
                 elapsed_seconds=time.monotonic()-started, updated_at=time.time(), errors=errors))
@@ -203,7 +204,7 @@ async def _generate(jobs, output, options, transport, validate, key, stop):
         if reply.status == 429:
             gate.rate_limited(reply.headers, time.monotonic())
             counters['rate_limits'] += 1
-            B.save(path.with_suffix('.http-error.json'), dict(status=429,
+            results.save(path.with_suffix('.http-error.json'), dict(status=429,
                 detail=reply.body.decode(errors='replace')[:2000], attempts=item['attempts']))
             pending.unlink()
             if item['attempts'] >= options.max_attempts:
@@ -212,7 +213,7 @@ async def _generate(jobs, output, options, transport, validate, key, stop):
             print(f"429: shared cooldown, concurrency={gate.limit}", flush=True)
             return
         if not 200 <= reply.status < 300:
-            B.save(path.with_suffix('.http-error.json'), dict(status=reply.status,
+            results.save(path.with_suffix('.http-error.json'), dict(status=reply.status,
                 detail=reply.body.decode(errors='replace')[:2000]))
             # 5xx and request timeout can have an unknown upstream outcome.
             if 400 <= reply.status < 500 and reply.status != 408:
@@ -228,11 +229,11 @@ async def _generate(jobs, output, options, transport, validate, key, stop):
         except (ValueError, UnicodeError):
             record.update(response={}, raw_response=reply.body.decode(errors='replace'),
                           error='invalid provider JSON envelope')
-        B.save(path, record)  # Paid response is durable before answer validation.
+        results.save(path, record)  # Paid response is durable before answer validation.
         pending.unlink()
         if 'error' not in record:
             await asyncio.to_thread(validate, record, job)
-            B.save(path, record)
+            results.save(path, record)
         counters['completed'] += 1
         gate.success(item['epoch'], time.monotonic())
         print(str(path.relative_to(output)), 'legal' if record['valid'] else 'invalid', flush=True)
@@ -240,7 +241,7 @@ async def _generate(jobs, output, options, transport, validate, key, stop):
     try:
         for job, record in recover:
             await asyncio.to_thread(validate, record, job)
-            B.save(job.path, record)
+            results.save(job.path, record)
             job.path.with_suffix('.pending').unlink(missing_ok=True)
         status('running')
         while queue or active:
@@ -254,7 +255,7 @@ async def _generate(jobs, output, options, transport, validate, key, stop):
                 item['started'] = item['started'] or now
                 job = item['job']
                 try:
-                    B.save(job.path.with_suffix('.pending'), dict(request_hash=item['request_hash'],
+                    results.save(job.path.with_suffix('.pending'), dict(request_hash=item['request_hash'],
                         payload=item['payload'], started_at=time.time(), attempt=item['attempts']))
                 except Exception as exc:
                     queue.appendleft(item)

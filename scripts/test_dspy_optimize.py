@@ -7,6 +7,7 @@ import unittest.mock
 from unittest.mock import Mock
 
 import repo_paths  # puts src/ first on sys.path
+import results
 import llm_baseline as B
 
 try:
@@ -146,7 +147,7 @@ class LegalChoiceOptimizeTests(unittest.TestCase):
 
     def test_mipro_is_refused_with_legal_choice_types(self):
         with tempfile.TemporaryDirectory() as tmp:
-            B.save(Path(tmp) / 'manifest.json', self.m)
+            results.save(Path(tmp) / 'manifest.json', self.m)
             args = SimpleNamespace(output=Path(tmp), optimizer='mipro', num_retries=3)
             with unittest.mock.patch.object(B, 'runtime', return_value=(self.h, None)), \
                  unittest.mock.patch.object(O, 'lm_for', return_value=DummyLM([])):
@@ -195,7 +196,7 @@ class ReflectionModelTests(unittest.TestCase):
 
         writer = DummyLM([])
         with tempfile.TemporaryDirectory() as tmp:
-            B.save(Path(tmp) / 'manifest.json', self.m)
+            results.save(Path(tmp) / 'manifest.json', self.m)
             args = SimpleNamespace(output=Path(tmp), optimizer='gepa', battles=False, alpha=.5, budget='light',
                                    threads=1, seed=1, reflection_model='openai/gpt-6-luna', reflection_effort='high',
                                    num_retries=8)
@@ -259,7 +260,7 @@ class ReflectionShapeTests(unittest.TestCase):
             raise Stop
 
         with tempfile.TemporaryDirectory() as tmp:
-            B.save(Path(tmp) / 'manifest.json', self.m)
+            results.save(Path(tmp) / 'manifest.json', self.m)
             args = SimpleNamespace(output=Path(tmp), optimizer='gepa', battles=False, alpha=.5, budget='light',
                                    threads=1, seed=1, reflection_model=None, reflection_effort='high', num_retries=3)
             h = Mock(Validator=Mock(return_value=Mock()))

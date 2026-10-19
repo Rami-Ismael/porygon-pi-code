@@ -5,6 +5,7 @@ import concurrent.futures
 import json
 from types import SimpleNamespace
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 
 BASE=ROOT/'results/llm-baseline-full-grid'
@@ -18,7 +19,7 @@ def worker(index,count,baseline=None,diffusion=None,backend='fast'):
         BASE,DIFF=Path(baseline),Path(diffusion)
     m=json.loads((BASE/'manifest.json').read_text())
     out=BASE/'workers'/str(index)
-    B.save(out/'manifest.json',m)
+    results.save(out/'manifest.json',m)
     candidates=[(f'start-{i}',team,BASE) for i,team in enumerate(m['starts'])]
     for t in m['trials']:
         candidates.append(('random-'+t['id'],t['random_team'],BASE))
@@ -30,11 +31,11 @@ def worker(index,count,baseline=None,diffusion=None,backend='fast'):
     h,db=B.runtime()
     # Identical teams always go to the same process, preventing cache races.
     selected=[(label,team,dest) for label,team,dest in candidates
-              if int(B.digest(db.canonical_paste(B.paste(team,h))),16)%count==index]
+              if int(results.digest(db.canonical_paste(B.paste(team,h))),16)%count==index]
     B.battle(SimpleNamespace(output=out,battle_backend=backend),candidates_override=[(label,team) for label,team,_ in selected])
     for label,_,dest in selected:
         p=out/'labels'/(label+'.json')
-        B.save(dest/'labels'/p.name,json.loads(p.read_text()))
+        results.save(dest/'labels'/p.name,json.loads(p.read_text()))
     return index,len(selected)
 
 
@@ -59,4 +60,4 @@ if __name__=='__main__':
         for future in concurrent.futures.as_completed(futures): print('Finished worker',future.result(),flush=True)
     config=json.loads((BASE/'workers/0/battle-config.json').read_text())
     for i in range(args.workers): assert json.loads((BASE/f'workers/{i}/battle-config.json').read_text())==config
-    for dest in (BASE,DIFF): B.save(dest/'battle-config.json',config)
+    for dest in (BASE,DIFF): results.save(dest/'battle-config.json',config)

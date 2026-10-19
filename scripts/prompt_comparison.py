@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 
 PARENT=ROOT/'results/llm-baseline-meta-starters'
@@ -25,10 +26,10 @@ def prepare():
     grid={task:sorted({1,(max(ks)+1)//2,max(ks)}) for task,ks in m['grid'].items()}
     m['trials']=[t for t in m['trials'] if t['start'] in starts and t['k'] in grid[t['task']]]
     m.update(prompt_version='mb-grounded-v2',grid=grid,prompt_comparison=dict(selected_starts=starts,selection_seed=20261011,
-         selection='seven starters sampled before observing revised results; min/mid/max mask per family',parent_manifest_sha256=B.digest(old)))
+         selection='seven starters sampled before observing revised results; min/mid/max mask per family',parent_manifest_sha256=results.digest(old)))
     assert len(m['trials'])==147
     if (OUT/'manifest.json').exists():assert json.loads((OUT/'manifest.json').read_text())==m
-    else:B.save(OUT/'manifest.json',m)
+    else:results.save(OUT/'manifest.json',m)
     return m
 
 
@@ -68,7 +69,7 @@ def publish():
          legal={name:sum(r[name] for r in done) for name in names},families=families,battlePairs=len(battle),scores=scores,
          cost={'old':sum(r['oldCost'] for r in done),'new':sum(r['newCost'] for r in done)},
          full={'oldLegal':1600,'diffusionLegal':4998,'total':4998},rows=records)
-    B.save(HERE/'prompt-comparison.json',result)
+    results.save(HERE/'prompt-comparison.json',result)
 
 
 def watch():
@@ -82,7 +83,7 @@ def watch():
 
 def run():
     m=prepare()
-    B.save(OUT/'progress.json',dict(stage='generating'))
+    results.save(OUT/'progress.json',dict(stage='generating'))
     with (OUT/'watch.log').open('a') as log:subprocess.Popen([sys.executable,__file__,'watch'],stdout=log,stderr=subprocess.STDOUT)
     if not all((OUT/'completions'/(t['id']+'.json')).exists() for t in m['trials']) and not os.environ.get('OPENROUTER_API_KEY'):
         os.environ['OPENROUTER_API_KEY']=getpass.getpass('OpenRouter key (not saved): ')
@@ -90,17 +91,17 @@ def run():
         with (OUT/logname).open('a') as log:
             subprocess.run([sys.executable,*argv],stdout=log,stderr=subprocess.STDOUT,check=True)
     command('generation.log',[str(ROOT/'scripts/llm_baseline.py'),'complete','--output',str(OUT)])
-    B.save(OUT/'progress.json',dict(stage='waiting_for_main_battles'));publish()
+    results.save(OUT/'progress.json',dict(stage='waiting_for_main_battles'));publish()
     # Avoid simultaneous writers calculating the same exact-panel cache entry.
     while (read(PARENT/'pipeline-progress.json') or {}).get('status')!='complete':
         if (read(PARENT/'pipeline-progress.json') or {}).get('status')=='interrupted':
             raise RuntimeError('Main battle run interrupted; resume it before this queued comparison')
         time.sleep(30)
-    B.save(OUT/'progress.json',dict(stage='scoring'))
-    frozen=OUT/'diffusion-reference';B.save(frozen/'manifest.json',m)
-    for t in m['trials']:B.save(frozen/'completions'/(t['id']+'.json'),read(DIFF/'completions'/(t['id']+'.json')))
+    results.save(OUT/'progress.json',dict(stage='scoring'))
+    frozen=OUT/'diffusion-reference';results.save(frozen/'manifest.json',m)
+    for t in m['trials']:results.save(frozen/'completions'/(t['id']+'.json'),read(DIFF/'completions'/(t['id']+'.json')))
     command('battles.log',[str(ROOT/'scripts/dense_grid_battles.py'),'--baseline',str(OUT),'--diffusion',str(frozen),'--workers','6'])
-    B.save(OUT/'progress.json',dict(stage='complete'));publish()
+    results.save(OUT/'progress.json',dict(stage='complete'));publish()
 
 
 if __name__=='__main__':
@@ -111,4 +112,4 @@ if __name__=='__main__':
             fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
             try:globals()[args.command]()
             except Exception:
-                B.save(OUT/'progress.json',dict(stage='interrupted'));raise
+                results.save(OUT/'progress.json',dict(stage='interrupted'));raise

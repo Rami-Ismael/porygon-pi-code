@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 
 
@@ -61,14 +62,14 @@ def main():
                 if missing and not os.environ.get('OPENROUTER_API_KEY'):
                     os.environ['OPENROUTER_API_KEY']=getpass.getpass('OpenRouter API key (not saved): ')
             command[0]=str(ROOT/'scripts'/command[0]) if not command[0].startswith('/') else command[0]
-            B.save(output/'pipeline-progress.json',dict(stage=stage,status='running',updated_at=time.time()))
+            results.save(output/'pipeline-progress.json',dict(stage=stage,status='running',updated_at=time.time()))
             print('Stage:',stage,flush=True)
             with (output/'pipeline.log').open('a') as log:
                 result=subprocess.run([sys.executable,*command],stdout=log,stderr=subprocess.STDOUT)
             if result.returncode:
-                B.save(output/'pipeline-progress.json',dict(stage=stage,status='interrupted',returncode=result.returncode,updated_at=time.time()))
+                results.save(output/'pipeline-progress.json',dict(stage=stage,status='interrupted',returncode=result.returncode,updated_at=time.time()))
                 raise RuntimeError('Stage failed: '+stage+'; inspect '+str(output/'pipeline.log'))
-        B.save(output/'pipeline-progress.json',dict(stage='complete',status='complete',updated_at=time.time()))
+        results.save(output/'pipeline-progress.json',dict(stage='complete',status='complete',updated_at=time.time()))
         print('Full grid complete. Dashboard rebuilt.',flush=True)
 
 

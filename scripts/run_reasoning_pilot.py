@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 import reasoning_experiment as E
 
@@ -101,12 +102,12 @@ def main():
         m['trials'] = selected
         m['grid'] = {task: sorted({t['k'] for t in selected if t['task'] == task})
                      for task in sorted({t['task'] for t in selected})}
-        m['pilot_selection'] = dict(parent_sha256=B.digest(parent), starters=starters,
+        m['pilot_selection'] = dict(parent_sha256=results.digest(parent), starters=starters,
                                     rule=f'first {args.starters} starter indices; largest mask per family')
         subset = args.output.parent / (args.output.name + '-parent')
         if subset.exists():
             raise ValueError('pilot parent already exists')
-        B.save(subset / 'manifest.json', m)
+        results.save(subset / 'manifest.json', m)
         E.prepare(SimpleNamespace(parent=subset, output=args.output, arms=['off', 'on'],
                                   replicates=args.replicates, max_tokens=16384, request_timeout=600))
         E.report(args)

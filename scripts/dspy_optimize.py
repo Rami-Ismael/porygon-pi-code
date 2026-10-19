@@ -22,6 +22,7 @@ import dspy
 
 import dspy_structure as S
 import repo_paths  # puts src/ first on sys.path
+import results
 import llm_baseline as B
 
 SPLITS = ('train', 'dev')
@@ -38,7 +39,7 @@ def prepare(args):
     count = args.train_starters + args.dev_starters
     m = P.fresh_starters(parent, count, args.seed)  # excludes parent starters and every pool team
     split = {str(i): 'train' if i < args.train_starters else 'dev' for i in range(count)}
-    m.update(optimization=dict(parent=str(args.parent), parent_manifest_sha256=B.digest(parent),
+    m.update(optimization=dict(parent=str(args.parent), parent_manifest_sha256=results.digest(parent),
                                split=split, adapter=args.adapter,
                                rule='largest mask per family; starters sampled fresh'))
     constraints = getattr(args, 'constraints', None)
@@ -47,7 +48,7 @@ def prepare(args):
     m['structure'] = S.config(args.adapter, constraints=constraints)
     for trial in m['trials']:
         S.check_information(m, trial)
-    B.save(args.output / 'manifest.json', m)
+    results.save(args.output / 'manifest.json', m)
     print(json.dumps(dict(output=str(args.output), train=args.train_starters, dev=args.dev_starters,
                           tasks=len(m['trials']))))
 
@@ -146,7 +147,7 @@ class Metric:
         return team
 
     def battle_panel(self, trial, team):
-        label = f"llm-{trial['id']}-{B.digest(team)[:12]}"
+        label = f"llm-{trial['id']}-{results.digest(team)[:12]}"
         result = {}
         B.battle(SimpleNamespace(output=self.output), candidates_override=[(label, team)],
                  on_result=lambda _, r: result.update(r))
@@ -160,7 +161,7 @@ class Metric:
             return dspy.Prediction(score=0.0, feedback=f'Rejected: {exc}')
         if not self.battles:
             return dspy.Prediction(score=1.0, feedback='Legal: passed the shape checks and the Showdown validator.')
-        key = B.digest(dict(team=team, start=trial['start']))
+        key = results.digest(dict(team=team, start=trial['start']))
         if key not in self.cache:
             self.cache[key] = self.battle(trial, team)
         win = self.cache[key]
@@ -302,7 +303,7 @@ def optimize(args):
                         reflection_lm_cost_usd=reflection_cost, max_demos=args.max_demos, seed=args.seed,
                         train_tasks=len(train), dev_tasks=len(dev), dev_score_before=before,
                         dev_score_after=after, task_lm_cost_usd=cost, dspy_version=dspy.__version__)
-        B.save(args.output / 'program.json', export(optimized, m, settings))
+        results.save(args.output / 'program.json', export(optimized, m, settings))
         optimized.save(str(args.output / 'dspy-program.json'))
         print(json.dumps(settings))
     finally:

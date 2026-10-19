@@ -3,6 +3,7 @@ import json
 import unittest
 import frozen as F
 import repo_paths  # puts src/ first on sys.path
+import results
 import llm_baseline as B
 
 
@@ -24,7 +25,7 @@ class GroundedPromptTests(unittest.TestCase):
             payload=dict(model=B.MODEL,messages=B.prompt(old,trial),temperature=old['temperature'],max_tokens=old['max_tokens'],
                          reasoning=old['reasoning'],provider={'order':['novita'],'allow_fallbacks':False})
             record=F.load('llm-baseline-meta-starters/completions/'+trial['id']+'.json')
-            self.assertEqual(B.digest(payload),record['request_hash'])
+            self.assertEqual(results.digest(payload),record['request_hash'])
             self.assertNotEqual(B.prompt(old,trial),B.prompt(self.m,trial))
 
     def test_matched_tasks_preserved_and_starter_excluded(self):

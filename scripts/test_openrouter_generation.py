@@ -12,6 +12,7 @@ import urllib.request
 from unittest.mock import patch
 
 import repo_paths  # puts src/ first on sys.path
+import results
 import llm_baseline as B
 import openrouter_generation as G
 
@@ -66,11 +67,11 @@ class GenerationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_pending_and_hash_mismatch_preflight_sends_nothing(self):
         last = self.jobs[-1].path
-        B.save(last.with_suffix('.pending'), {})
+        results.save(last.with_suffix('.pending'), {})
         with self.assertRaisesRegex(RuntimeError, 'uncertain'):
             await self.run_jobs(lambda *a: self.fail('sent before full preflight'))
         last.with_suffix('.pending').unlink()
-        B.save(last, dict(request_hash='wrong', valid=True))
+        results.save(last, dict(request_hash='wrong', valid=True))
         with self.assertRaisesRegex(ValueError, 'mismatch'):
             await self.run_jobs(lambda *a: self.fail('sent before full preflight'))
 
@@ -142,12 +143,12 @@ class GenerationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads((self.root/'generation-status.json').read_text())['stage'], 'stopped')
 
     async def test_pending_write_failure_drains_existing_request(self):
-        save = B.save
+        save = results.save
         def failing_save(path, record):
             if path == self.jobs[1].path.with_suffix('.pending'):
                 raise OSError('write failed')
             save(path, record)
-        with patch.object(B, 'save', side_effect=failing_save):
+        with patch.object(results, 'save', side_effect=failing_save):
             with self.assertRaisesRegex(RuntimeError, 'write failed'):
                 await self.run_jobs(lambda *a: self.ok())
         self.assertTrue(self.jobs[0].path.exists())
@@ -178,12 +179,12 @@ class GenerationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['stage'], 'stopped')
 
     async def test_status_write_failure_drains_existing_request(self):
-        save = B.save
+        save = results.save
         def failing_save(path, record):
             if path.name == 'generation-status.json' and record['attempts']:
                 raise OSError('status disk failed')
             save(path, record)
-        with patch.object(B, 'save', side_effect=failing_save):
+        with patch.object(results, 'save', side_effect=failing_save):
             with self.assertRaisesRegex(RuntimeError, 'status disk failed'):
                 await self.run_jobs(lambda *a: self.ok())
         self.assertTrue(self.jobs[0].path.exists())

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import statistics
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 import lossdown as L
 import reasoning_experiment as E
@@ -57,7 +58,7 @@ for name in ['mercury-reasoning-20261013','reasoning-expanded-20261012']:
   item['paired_llm_rate']=statistics.mean(statistics.mean(c['win_rate'] for r,c in both if r['start']==start) for start in starts)
   comparisons[name+'/'+arm]=item
 result=dict(verified_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),preserved_files=len(audit['before']),outputs=420,supported=420,legal=420,scored=420,missing=0,invalid=0,unsupported=0,unique_panels=len(labels),duplicate_panels=420-len(labels),represented_battles=21000,unique_panel_battles=50*len(labels),all_legal_win_rate=statistics.mean(r['win_rate'] for r in rows),comparisons=comparisons,generation_seconds_sum=sum(seconds),generation_seconds_median=statistics.median(seconds),api_cost_usd=0,compute_cost_measured=False,configs_identical=True,checkpoint_hashes_verified=True,unmasked_values_preserved=True)
-B.save(P/'final-audit.json',result)
+results.save(P/'final-audit.json',result)
 lines=['# Matched Pokémon diffusion study','', '420/420 supported and legal outputs; 420 fully scored panels. 20 starters, 140 masks, three seeded repeats.','',f"All-legal descriptive win rate: {result['all_legal_win_rate']:.2%}. 414 unique panels and six reused panels. 21,000 represented battles; 20,700 unique-panel battles.",'','| Diffusion minus | Legality delta (pp) | Matched battle delta (pp) | Battle 95% interval (pp) | Pairs |','|---|---:|---:|---|---:|']
 for name,x in comparisons.items():
  b=x['battles'];lines.append(f"| {name} | {100*x['legality']['mean']:.2f} | {100*b['mean']:.2f} | {100*b['low']:.2f} to {100*b['high']:.2f} | {b['pairs']} |")

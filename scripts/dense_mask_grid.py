@@ -7,6 +7,7 @@ import random
 import shutil
 
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 
 
@@ -40,13 +41,13 @@ def prepare():
     finally:
         validator.close()
     assert len(m['trials']) == 306 and m['trials'][:63] == original['trials']
-    m['extension'] = dict(parent_manifest_sha256=B.digest(original),reused=63,added=243,
+    m['extension'] = dict(parent_manifest_sha256=results.digest(original),reused=63,added=243,
                           control_seed='sha256(dense:seed:trial) first 16 hex digits',
                           diffusion_seed='manifest seed + trial index; original indices preserved')
     for dest in (target,diff):
         if (dest/'manifest.json').exists():
             assert json.loads((dest/'manifest.json').read_text()) == m
-        B.save(dest/'manifest.json',m)
+        results.save(dest/'manifest.json',m)
     for src,dest in ((source,target),(old_diff,diff)):
         for directory in ('completions','labels'):
             for path in (src/directory).glob('*.json'):
@@ -84,7 +85,7 @@ def report():
             a=json.loads(a.read_text())
             pairs.append(dict(trial=t['id'],start=t['start'],delta_pp=100*(d['wins']/50-a['wins']/50)))
     summary=dict(supported=sum(r['supported'] for r in rows),legal=sum(r['valid'] for r in rows),scored=scored,pairs=pairs)
-    B.save(diff/'summary.json',summary)
+    results.save(diff/'summary.json',summary)
     old=json.loads((ROOT/'results/llm-baseline-instant-pilot/status.json').read_text())
     cost=status['reported_cost_usd']-old['reported_cost_usd']
     delta=sum(sum(r['delta_pp'] for r in pairs if r['start']==s)/sum(r['start']==s for r in pairs) for s in range(3))/3

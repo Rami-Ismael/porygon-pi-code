@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import Mock
 
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 import reasoning_experiment as E
 
@@ -225,13 +226,13 @@ class LegalChoiceTests(unittest.TestCase):
     def test_prepare_records_the_constraints(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            B.save(root / 'parent/manifest.json', MANIFEST)
+            results.save(root / 'parent/manifest.json', MANIFEST)
             E.prepare(SimpleNamespace(parent=root / 'parent', output=root / 'baseline', arms=['off', 'on'],
                                       replicates=1, max_tokens=4096, request_timeout=600))
             _, runs = E.load_runs(root / 'baseline')
             for entry, folder, m in runs:
                 for t in m['trials']:
-                    B.save(folder / 'completions' / (t['id'] + '.json'),
+                    results.save(folder / 'completions' / (t['id'] + '.json'),
                            dict(request_hash=entry['request_hashes'][t['id']], valid=False, error='wrong number of fills',
                                 response={'choices': [{'finish_reason': 'stop'}], 'usage': {'cost': .001}}))
             E.report(SimpleNamespace(output=root / 'baseline'))
@@ -248,7 +249,7 @@ class ExperimentTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        B.save(self.root / 'parent/manifest.json', MANIFEST)
+        results.save(self.root / 'parent/manifest.json', MANIFEST)
         self.baseline = self.root / 'baseline'
         E.prepare(SimpleNamespace(parent=self.root / 'parent', output=self.baseline, arms=['off', 'on'],
                                   replicates=1, max_tokens=4096, request_timeout=600))
@@ -270,10 +271,10 @@ class ExperimentTests(unittest.TestCase):
             row['error'] = 'wrong number of fills'
         if strict is not None:
             row['structure'] = {'strict_json': strict}
-        B.save(folder / 'completions' / (t['id'] + '.json'), row)
-        B.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7})
+        results.save(folder / 'completions' / (t['id'] + '.json'), row)
+        results.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7})
         if wins is not None:
-            B.save(folder / 'labels' / ('llm-' + t['id'] + '.json'), dict(battles=50, wins=wins))
+            results.save(folder / 'labels' / ('llm-' + t['id'] + '.json'), dict(battles=50, wins=wins))
 
     def test_prepare_mirrors_every_baseline_run(self):
         X.prepare(self.args)
@@ -336,7 +337,7 @@ class ExperimentTests(unittest.TestCase):
         _, runs = E.load_runs(self.args.output)
         entry, folder, m = runs[0]
         self.save(folder, entry, m['trials'][0], True, wins=3)
-        B.save(folder / 'battle-config.json', {'policy': 'other', 'seed': 7})
+        results.save(folder / 'battle-config.json', {'policy': 'other', 'seed': 7})
         with self.assertRaisesRegex(ValueError, 'not comparable'):
             X.report(self.args)
 
@@ -346,10 +347,10 @@ class ExperimentTests(unittest.TestCase):
         _, runs = E.load_runs(self.baseline)
         RB.study_backend(self.baseline, runs, 'fast')
         for entry, folder, m in runs:
-            B.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7, 'backend': 'fast'})
+            results.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7, 'backend': 'fast'})
             for t in m['trials']:
                 if t['id'] != 's1-move-2':
-                    B.save(folder / 'labels' / ('llm-' + t['id'] + '.json'), dict(battles=50, wins=wins))
+                    results.save(folder / 'labels' / ('llm-' + t['id'] + '.json'), dict(battles=50, wins=wins))
         E.report(SimpleNamespace(output=self.baseline))
 
     def test_report_accepts_a_baseline_rebattled_on_another_engine(self):
@@ -359,7 +360,7 @@ class ExperimentTests(unittest.TestCase):
         for entry, folder, m in runs:
             for t in m['trials']:
                 self.save(folder, entry, t, True, wins=5)
-            B.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7, 'backend': 'fast'})
+            results.save(folder / 'battle-config.json', {'policy': 'bc', 'seed': 7, 'backend': 'fast'})
         status = X.report(self.args)
         self.assertTrue(status['complete'])
         cell = next(c for c in status['cells'] if c['variant'] == 'chat' and c['reasoning'] == 'off')
@@ -370,7 +371,7 @@ class ExperimentTests(unittest.TestCase):
         self.rebattle_baseline_on_fast(wins=4)
         status = E.read(self.baseline / 'status.json')
         status['rows'][0]['legal'] = not status['rows'][0]['legal']
-        B.save(self.baseline / 'status.json', status)
+        results.save(self.baseline / 'status.json', status)
         with self.assertRaisesRegex(ValueError, 'baseline status changed since prepare'):
             X.report(self.args)
 

@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch, Mock, AsyncMock
 
 import repo_paths  # puts src/ first on sys.path
+import results
 import llm_baseline as B
 import reasoning_experiment as E
 
@@ -24,7 +25,7 @@ class ReasoningExperimentTests(unittest.TestCase):
             trials=[dict(id='s0-item-1', start=0, task='item', k=1, paths=[[0, 'item']], random_team=team)],
             opponents=[dict(team_id=1, paste='frozen opponent')], battles=50, grid={'item': [1]},
             max_tokens=4096, temperature=.7, reasoning={'enabled': False}, seed_limit='simulator unseeded')
-        B.save(self.args.parent / 'manifest.json', self.manifest)
+        results.save(self.args.parent / 'manifest.json', self.manifest)
 
     def prepare(self):
         E.prepare(self.args)
@@ -55,7 +56,7 @@ class ReasoningExperimentTests(unittest.TestCase):
         path = folder/'completions/s0-item-1.json'
         raw = E.read(path)
         del raw['error']  # Durable network reply, validation still outstanding.
-        B.save(path, raw)
+        results.save(path, raw)
         before = path.read_bytes()
         self.assertFalse(battles.progress(self.args.output)['complete'])
         E.report(self.args)
@@ -63,7 +64,7 @@ class ReasoningExperimentTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), before)
         self.record(entry, folder, valid=True)
         self.assertFalse(battles.progress(self.args.output)['complete'])
-        B.save(folder/'labels/llm-s0-item-1.json', dict(battles=50, wins=3))
+        results.save(folder/'labels/llm-s0-item-1.json', dict(battles=50, wins=3))
         self.assertTrue(battles.progress(self.args.output)['complete'])
 
     def record(self, entry, folder, valid=True, tokens=None):
@@ -74,7 +75,7 @@ class ReasoningExperimentTests(unittest.TestCase):
             row['team'] = self.manifest['starts'][0]
         else:
             row['error'] = 'truncated/non-stop completion'
-        B.save(folder / 'completions/s0-item-1.json', row)
+        results.save(folder / 'completions/s0-item-1.json', row)
 
     def test_prepare_freezes_matched_design_without_mutating_parent(self):
         study, runs = self.prepare()
@@ -103,11 +104,11 @@ class ReasoningExperimentTests(unittest.TestCase):
         self.record(entry, folder)
         row = E.read(folder / 'completions/s0-item-1.json')
         row['request_hash'] = 'wrong'
-        B.save(folder / 'completions/s0-item-1.json', row)
+        results.save(folder / 'completions/s0-item-1.json', row)
         with self.assertRaisesRegex(ValueError, 'completion request mismatch'):
             E.report(self.args)
         manifest['max_tokens'] += 1
-        B.save(folder / 'manifest.json', manifest)
+        results.save(folder / 'manifest.json', manifest)
         with self.assertRaisesRegex(ValueError, 'manifest changed'):
             E.load_runs(self.args.output)
 
@@ -133,8 +134,8 @@ class ReasoningExperimentTests(unittest.TestCase):
         _, runs = self.prepare()
         for entry, folder, _ in runs:
             self.record(entry, folder)
-            B.save(folder / 'battle-config.json', {'policy': 'same', 'seed': 42})
-            B.save(folder / 'labels/llm-s0-item-1.json', {'wins': 30 if entry['arm'] == 'on' else 20, 'battles': 50})
+            results.save(folder / 'battle-config.json', {'policy': 'same', 'seed': 42})
+            results.save(folder / 'labels/llm-s0-item-1.json', {'wins': 30 if entry['arm'] == 'on' else 20, 'battles': 50})
         E.report(self.args)
         status = E.read(self.args.output / 'status.json')
         self.assertTrue(status['complete'])
@@ -142,7 +143,7 @@ class ReasoningExperimentTests(unittest.TestCase):
         self.assertAlmostEqual(d['mean'], .2)
         self.assertEqual(d['pairs'], 2)
         self.assertIsNone(d['low'])
-        B.save(runs[0][1] / 'battle-config.json', {'policy': 'different'})
+        results.save(runs[0][1] / 'battle-config.json', {'policy': 'different'})
         with self.assertRaisesRegex(ValueError, 'configurations differ'):
             E.report(self.args)
 
@@ -196,7 +197,7 @@ class ReasoningExperimentTests(unittest.TestCase):
             B.complete(SimpleNamespace(output=folder))
             request.assert_not_called()
             (folder / 'completions/s0-item-1.json').unlink()
-            B.save(folder / 'completions/s0-item-1.pending', {})
+            results.save(folder / 'completions/s0-item-1.pending', {})
             with self.assertRaisesRegex(RuntimeError, 'uncertain previous API request'):
                 B.complete(SimpleNamespace(output=folder))
             request.assert_not_called()

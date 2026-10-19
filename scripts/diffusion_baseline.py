@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 
 MEMBERS = ["F1_final_medium_noheldout", "G2_family_matrix_noprtrain_noheldout"]
@@ -59,7 +60,7 @@ def generate(args):
                   stat_points='same-species corpus spread; random legal spread if species has no corpus spread; not neural prediction',
                   input='strict known categorical context; no Stat Points or opponent-paste input',
                   masked_move_order='known sorted first; blanks last; no hidden-value ranks',
-                  vocab_sha256=B.digest(vocab.itos), corpus_sha256=B.digest(corpus), checkpoints={})
+                  vocab_sha256=results.digest(vocab.itos), corpus_sha256=results.digest(corpus), checkpoints={})
     for name in args.members:
         net, cfg, _ = L.load_net(name, vocab)
         funcs.append(L.logprobs_fn(net, tables, rules))
@@ -69,7 +70,7 @@ def generate(args):
     config_path = args.output/'generation-config.json'
     if config_path.exists() and json.loads(config_path.read_text()) != json.loads(json.dumps(config)):
         raise ValueError('generation configuration changed; use a fresh output directory')
-    B.save(config_path, config)
+    results.save(config_path, config)
     f = L.ensemble_fn(funcs)
     h, _ = B.runtime()
     validator = h.Validator()
@@ -82,7 +83,7 @@ def generate(args):
             row = dict(trial=trial['id'], valid=False, supported=not missing, missing=missing)
             if missing:
                 row['error'] = 'unmasked categorical value outside checkpoint vocabulary'
-                B.save(dest, row)
+                results.save(dest, row)
                 continue
             t0 = time.perf_counter()
             torch.manual_seed(args.manifest['seed']+i)
@@ -120,7 +121,7 @@ def generate(args):
             except ValueError as exc:
                 row['error'] = str(exc)
             row['seconds'] = time.perf_counter()-t0
-            B.save(dest,row)
+            results.save(dest,row)
             print(trial['id'], row['valid'], row.get('error'), flush=True)
     finally:
         validator.close()
@@ -169,7 +170,7 @@ def report(args):
     text = '\n'.join(lines)+'\n'
     (args.output/'report.md').write_text(text)
     (ROOT/'docs/diffusion-baseline-comparison.md').write_text(text)
-    B.save(args.output/'summary.json',dict(supported=supported,legal=valid,scored=len(labels),pairs=pairs))
+    results.save(args.output/'summary.json',dict(supported=supported,legal=valid,scored=len(labels),pairs=pairs))
     print(json.dumps(dict(supported=supported,legal=valid,scored=len(labels),pairs=pairs)))
 
 
@@ -184,7 +185,7 @@ def main():
     args.manifest=json.loads((args.baseline/'manifest.json').read_text())
     dest=args.output/'manifest.json'
     if dest.exists() and json.loads(dest.read_text()) != args.manifest: raise ValueError('frozen manifest changed')
-    B.save(dest,args.manifest)
+    results.save(dest,args.manifest)
     with (args.output/'.lock').open('w') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         if args.command=='battle':

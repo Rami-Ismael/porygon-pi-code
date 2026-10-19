@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 from resume_full_grid import restore_runtime
 
@@ -65,7 +66,7 @@ def prepare():
     regulation=json.loads((ROOT/'data/regmb-vocabulary.json').read_text())
     m={k:copy.deepcopy(v) for k,v in old.items() if k not in ('starts','trials','extension','source_sha256')}
     m.update(seed=20261010,starts=[],trials=[],starter_kind='frozen meta pool',exclude_starter_team_ids=[o['team_id'] for o in old['opponents']],
-             starter_provenance=[],parent_manifest_sha256=B.digest(old),source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+             starter_provenance=[],parent_manifest_sha256=results.digest(old),source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
     m['sampler']='random control: compatible ability/item pairs (corpus item pool), distinct legal moves, random spreads/natures; whole slots use hierarchical product; final simulator validation'
     m['preserve_empty_move_slots']=True
     validator=h.Validator()
@@ -94,13 +95,13 @@ def prepare():
                         seed=int(hashlib.sha256(f"meta:{m['seed']}:{tid}".encode()).hexdigest()[:16],16)
                         control=random_control(team,order[:k],tables,np.random.default_rng(seed),h,validator,regulation)
                         trial=dict(id=tid,start=i,task=task,k=k,paths=order[:k],random_team=control)
-                        B.save(checkpoint,trial)
+                        results.save(checkpoint,trial)
                     m['trials'].append(trial)
             print('Prepared starter',i+1,'of',len(m['opponents']),flush=True)
     finally:
         con.close();validator.close()
     assert len(m['starts'])==49 and len(m['trials'])==4998
-    for dest in (BASE,DIFF): B.save(dest/'manifest.json',m)
+    for dest in (BASE,DIFF): results.save(dest/'manifest.json',m)
 
 
 def status():
@@ -133,16 +134,16 @@ def run():
         return proc
     jobs=[('ling-'+str(i),['llm_baseline.py','complete','--output',str(BASE),'--shards','4','--shard',str(i)]) for i in range(4)]
     jobs.append(('diffusion',['diffusion_baseline.py','generate','--baseline',str(BASE),'--output',str(DIFF),'--members',*MEMBERS]))
-    B.save(BASE/'pipeline-progress.json',dict(stage='generation',status='running',time=time.time()))
+    results.save(BASE/'pipeline-progress.json',dict(stage='generation',status='running',time=time.time()))
     launch('progress',['watch_meta_grid.py'])
     active=[(name,launch(name,argv)) for name,argv in jobs]
     codes=[(name,p.wait()) for name,p in active]
     if any(code for _,code in codes): raise RuntimeError('Generation interrupted; saved outputs retained: '+str(codes))
-    B.save(BASE/'pipeline-progress.json',dict(stage='battles',status='running',time=time.time()))
+    results.save(BASE/'pipeline-progress.json',dict(stage='battles',status='running',time=time.time()))
     proc=launch('battles',['dense_grid_battles.py','--baseline',str(BASE),'--diffusion',str(DIFF),'--workers','6'])
     if proc.wait(): raise RuntimeError('Scoring interrupted; rerun to resume cached panels')
     report()
-    B.save(BASE/'pipeline-progress.json',dict(stage='complete',status='complete',time=time.time()))
+    results.save(BASE/'pipeline-progress.json',dict(stage='complete',status='complete',time=time.time()))
 
 
 def report():
@@ -160,9 +161,9 @@ def report():
         if a.exists() and b.exists():
             x,y=json.loads(a.read_text()),json.loads(b.read_text())
             pairs.append(dict(trial=t['id'],start=t['start'],delta_pp=2*(y['wins']-x['wins'])))
-    B.save(BASE/'experiment-summary.json',dict(s,paired=pairs))
+    results.save(BASE/'experiment-summary.json',dict(s,paired=pairs))
     supported=sum(json.loads(p.read_text())['supported'] for p in (DIFF/'completions').glob('*.json'))
-    B.save(DIFF/'summary.json',dict(supported=supported,legal=s['diffusion']['legal'],scored=s['diffusion']['saved_labels'],pairs=pairs))
+    results.save(DIFF/'summary.json',dict(supported=supported,legal=s['diffusion']['legal'],scored=s['diffusion']['saved_labels'],pairs=pairs))
     version=selection.get('version','v2')
     lines=['# Meta-starter full grid','',f"49 frozen meta teams; 4,998 tasks. Ling: {s['ling']['legal']} legal. Diffusion: {s['diffusion']['legal']} legal. API cost: ${s['ling']['cost_usd']:.6f}.",'',f'{len(pairs)} jointly scored tasks. Each starter is excluded from its own prompt and opponent panel. Each panel contains 50 battles over the other 48 opponents. Diffusion: F1/G2 {version}, ask 0.5, guidance 2, temperature 1. BC policy on both sides. This is an in-pool improvement experiment, not held-out generalization.']
     (ROOT/'docs/meta-starter-grid-results.md').write_text('\n'.join(lines)+'\n')
@@ -176,5 +177,5 @@ if __name__=='__main__':
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         try: globals()[args.command]()
         except Exception as exc:
-            B.save(BASE/'pipeline-progress.json',dict(status='interrupted',error=str(exc),time=time.time()))
+            results.save(BASE/'pipeline-progress.json',dict(status='interrupted',error=str(exc),time=time.time()))
             raise

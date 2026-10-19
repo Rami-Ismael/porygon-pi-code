@@ -18,6 +18,7 @@ import urllib.error
 import urllib.request
 
 from repo_paths import ROOT  # also puts src/ first on sys.path
+from results import digest, save
 MODEL = "inclusionai/ling-3.0-flash-vl"
 FORMAT = "gen9championsvgc2026regmb"
 BC_SHA256 = "57f5edcab415cf6ccc1b6231923c8b66d3b1b7249b6b2562b97531471e4ca60b"
@@ -26,26 +27,6 @@ GRID = {"stats": [1, 3, 6], "item": [1, 3, 6], "move": [1, 12, 24],
         "mixed": [1, 20, 40]}
 FIELDS = {"stats": "evs", "item": "item", "ability": "ability", "alignment": "nature"}
 STATS = ["HP", "Atk", "Def", "SpA", "SpD", "Spe"]
-
-
-def digest(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
-
-
-def save(path, value):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    with tmp.open('w') as handle:
-        handle.write(json.dumps(value, indent=2) + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    tmp.replace(path)
-    directory = os.open(str(path.parent), os.O_RDONLY)
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
 
 
 def paths_for(task):

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 from resume_full_grid import restore_runtime
 
@@ -28,7 +29,7 @@ def locked(path):
 
 
 def stage(name):
-    B.save(BASE/'pipeline-progress.json',dict(stage=name,status='running',time=time.time()))
+    results.save(BASE/'pipeline-progress.json',dict(stage=name,status='running',time=time.time()))
     print(name,flush=True)
 
 
@@ -47,7 +48,7 @@ def main(args):
     m=json.loads((BASE/'manifest.json').read_text());trials=m['trials']
     with (BASE/'.upgrade.lock').open('w') as guard:
         fcntl.flock(guard,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        B.save(BASE/'diffusion-selection.json',dict(version='v3',results=NEW.name,members=MEMBERS,
+        results.save(BASE/'diffusion-selection.json',dict(version='v3',results=NEW.name,members=MEMBERS,
                  previous_results=OLD.name,target_win_rate=.5,guidance=2,temperature=1))
         stage('waiting_for_v2_generation')
         if not locked(BASE/'.progress-watcher.lock'):
@@ -79,7 +80,7 @@ def main(args):
         execute('battles-v3',['dense_grid_battles.py','--baseline',str(BASE),'--diffusion',str(NEW),'--workers','6'])
         execute('report-v3',['meta_starter_grid.py','report'])
         subprocess.run([sys.executable,str(ROOT/'dashboard/build.py')],check=True)
-        B.save(BASE/'pipeline-progress.json',dict(stage='complete',status='complete',time=time.time()))
+        results.save(BASE/'pipeline-progress.json',dict(stage='complete',status='complete',time=time.time()))
         print('V3 comparison complete.',flush=True)
 
 
@@ -89,5 +90,5 @@ if __name__=='__main__':
     except BlockingIOError:
         print('The v3 upgrade is already running; no work was restarted.',flush=True)
     except Exception as exc:
-        B.save(BASE/'pipeline-progress.json',dict(status='interrupted',error=str(exc),time=time.time()))
+        results.save(BASE/'pipeline-progress.json',dict(status='interrupted',error=str(exc),time=time.time()))
         raise

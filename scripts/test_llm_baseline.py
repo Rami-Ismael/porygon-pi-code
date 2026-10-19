@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import unittest
 
 import repo_paths  # puts src/ first on sys.path
+import results
 from llm_baseline import GRID, STATS, apply_completion, masked, paths_for
 
 
@@ -108,9 +109,9 @@ class FastPanelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
             self.assertIsNone(B.switch_engine(folder, 'fast'))  # nothing battled yet
-            B.save(folder / 'labels' / 'start-0.json', {'wins': 3, 'battles': 50})
+            results.save(folder / 'labels' / 'start-0.json', {'wins': 3, 'battles': 50})
             self.assertEqual(B.recorded_backend(folder), 'legacy')  # labels without a config predate fast
-            B.save(folder / 'battle-config.json', {'seed': 1})
+            results.save(folder / 'battle-config.json', {'seed': 1})
             self.assertIsNone(B.switch_engine(folder, 'legacy'))
             archive = B.switch_engine(folder, 'fast')
             self.assertTrue(archive.name.startswith('archive-legacy-battles-'))
@@ -118,7 +119,7 @@ class FastPanelTests(unittest.TestCase):
             self.assertTrue((archive / 'labels' / 'start-0.json').exists())
             self.assertFalse((folder / 'labels').exists())
             self.assertIsNone(B.recorded_backend(folder))
-            B.save(folder / 'battle-config.json', {'seed': 1, 'backend': 'fast'})
+            results.save(folder / 'battle-config.json', {'seed': 1, 'backend': 'fast'})
             self.assertIsNone(B.switch_engine(folder, 'fast'))
 
 

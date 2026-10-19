@@ -10,6 +10,7 @@ import time
 from types import SimpleNamespace
 
 import repo_paths  # puts src/ first on sys.path
+import results
 import llm_baseline as B
 import reasoning_experiment as E
 
@@ -30,7 +31,7 @@ def plan(runs, canonical):
             row = E.completion(folder, entry, trial)
             if row is None or not row['valid']:
                 continue
-            key = B.digest(dict(team=canonical(row['team']),
+            key = results.digest(dict(team=canonical(row['team']),
                                 schedule=B.schedule_for(m, trial['start'])))
             group = groups.setdefault(key, dict(key=key, team=row['team'], start=trial['start'], destinations=[]))
             group['destinations'].append(str(folder / 'labels' / ('llm-' + trial['id'] + '.json')))
@@ -54,9 +55,9 @@ def publish(group, result, config):
             if old is not None and old != result:
                 raise ValueError(f'refusing to replace saved battle result: {destination}')
             if old_config is None:
-                B.save(config_path, config)
+                results.save(config_path, config)
             if old is None:
-                B.save(destination, result)
+                results.save(destination, result)
 
 
 def study_backend(output, runs, requested=None):
@@ -79,7 +80,7 @@ def study_backend(output, runs, requested=None):
 def fast_worker(output, manifest, groups):
     """All groups through one persistent six-worker evaluator, in this process."""
     folder = Path(output) / 'battle-fast'
-    B.save(folder / 'manifest.json', manifest)
+    results.save(folder / 'manifest.json', manifest)
     by_label = {f"p{g['key']}-s{g['start']}": g for g in groups}
     def finished(label, result):
         publish(by_label[label], result, E.read(folder / 'battle-config.json'))
@@ -91,7 +92,7 @@ def fast_worker(output, manifest, groups):
 
 def worker(output, index, manifest, groups):
     folder = Path(output) / 'battle-workers' / str(index)
-    B.save(folder / 'manifest.json', manifest)
+    results.save(folder / 'manifest.json', manifest)
     by_label = {f"p{g['key']}-s{g['start']}": g for g in groups}
     # Separate log per worker; publishing happens after each complete panel.
     with (folder / 'worker.log').open('a', buffering=1) as log:
@@ -171,11 +172,11 @@ def main():
         try:
             while True:
                 state = dict(progress(args.output), workers=args.workers, stage='scoring', updated_at=time.time())
-                B.save(args.output / 'parallel-battles.json', state)
+                results.save(args.output / 'parallel-battles.json', state)
                 panels = score(args.output, args.workers, args.battle_backend)
                 state = dict(progress(args.output), workers=args.workers, updated_at=time.time())
                 state['stage'] = 'complete' if state['complete'] else 'waiting_for_generation'
-                B.save(args.output / 'parallel-battles.json', state)
+                results.save(args.output / 'parallel-battles.json', state)
                 print(json.dumps(dict(state, new_panels=panels)), flush=True)
                 if state['complete'] or not args.watch:
                     # An older generation process may still write its end-of-run
@@ -186,7 +187,7 @@ def main():
                     break
                 time.sleep(30)
         except Exception as exc:
-            B.save(args.output / 'parallel-battles.json', dict(stage='failed', error=f'{type(exc).__name__}: {exc}', updated_at=time.time()))
+            results.save(args.output / 'parallel-battles.json', dict(stage='failed', error=f'{type(exc).__name__}: {exc}', updated_at=time.time()))
             raise
 
 

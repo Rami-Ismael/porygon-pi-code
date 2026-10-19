@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import repo_paths  # puts src/ first on sys.path
+import results
 import llm_baseline as B
 import reasoning_battles as P
 
@@ -68,9 +69,9 @@ class ParallelBattleTests(unittest.TestCase):
 
     def test_fast_by_default_and_a_legacy_study_is_archived_for_a_full_rebattle(self):
         self.assertEqual(P.study_backend(self.root, self.runs), 'fast')
-        B.save(self.root / 'off' / 'battle-config.json', {'seed': 42})  # written before the fast engine
-        B.save(self.root / 'off' / 'labels' / 'llm-s0-item-1.json', {'wins': 1, 'battles': 50})
-        B.save(self.root / 'status.json', {'rows': []})
+        results.save(self.root / 'off' / 'battle-config.json', {'seed': 42})  # written before the fast engine
+        results.save(self.root / 'off' / 'labels' / 'llm-s0-item-1.json', {'wins': 1, 'battles': 50})
+        results.save(self.root / 'status.json', {'rows': []})
         self.assertEqual(P.study_backend(self.root, self.runs, 'legacy'), 'legacy')
         self.assertTrue((self.root / 'off' / 'labels').exists())
         self.assertEqual(P.study_backend(self.root, self.runs), 'fast')

@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
+import results
 import llm_baseline as B
 from meta_starter_grid import BASE,DIFF,selection
 
@@ -33,7 +34,7 @@ def main():
             if training:
                 latest=max(training,key=lambda p:p.stat().st_mtime_ns)
                 payload['training']=dict(json.loads(latest.read_text()),member=latest.name.replace('-progress.json',''))
-            B.save(ROOT/'dashboard/meta-progress.json',payload)
+            results.save(ROOT/'dashboard/meta-progress.json',payload)
             if progress['status']=='complete':
                 # Report through the current code so a long-running coordinator
                 # can still publish the latest dashboard implementation.
