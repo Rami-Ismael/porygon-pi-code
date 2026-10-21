@@ -90,7 +90,7 @@ def fast_worker(output, manifest, groups):
 def score(output):
     _, runs = E.load_runs(output)
     archive_legacy_study(output, runs)
-    h, db = showdown_validator.runtime()
+    import hps_generate as h, matchup_db as db
     groups = plan(runs, lambda team: db.canonical_paste(showdown_validator.paste(team, h)))
     # A team's first insert sets its origin: record this study, not the evaluator's battle-fast folder.
     con = db.connect()

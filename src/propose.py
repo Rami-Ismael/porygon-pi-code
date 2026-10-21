@@ -15,7 +15,7 @@ from corpus import load_corpus, parse_team, norm, STATS, TEAMS
 from encode import Vocab, team_fields, canon, FIELDS, NF, NSLOT
 from model import MaskedFieldModel, random_mask, permute_slots, resample_fields
 
-SHOWDOWN = Path("/tmp/vgc-pilot/vgc-bench/pokemon-showdown")
+from showdown_validator import FORMAT, SHOWDOWN   # the pinned checkout; written nowhere else
 DEV = "mps" if torch.backends.mps.is_available() else "cpu"
 
 class Validator:
@@ -23,7 +23,7 @@ class Validator:
         self.p = subprocess.Popen(["node", "validate-teams-batch.js"],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   text=True, cwd=str(SHOWDOWN))
-    def __call__(self, text, fmt="gen9championsvgc2026regmb"):
+    def __call__(self, text, fmt=FORMAT):
         self.p.stdin.write(json.dumps({"format": fmt, "team": text}) + "\n")
         self.p.stdin.flush()
         r = json.loads(self.p.stdout.readline())

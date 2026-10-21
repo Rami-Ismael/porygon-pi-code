@@ -14,7 +14,6 @@ sys.path.insert(0, "/tmp/vgc-pilot/src")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hps_generate
 # /tmp cleanup broke the /tmp copies (2026-10-04); durable runtime copies, same commits
-hps_generate.SHOWDOWN = Path.home() / ".local/share/vgc-pilot-runtime/validator-913da36"
 import activesearch as A
 import entropyloop as E
 import gradguide as GG
@@ -24,7 +23,6 @@ from corpus import parse_team, parse_team_text, norm
 from hps_generate import Validator
 
 A.pool.REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
-MDB.SHOWDOWN = hps_generate.SHOWDOWN
 REPO = Path("/Users/ramiismael/Documents/code/vgc-team-generator-pilot")
 A.P0_CKPT = str(REPO / "results/temperature_p0_noheldout.pt")         # shared p0 (the original is gone)
 OUT = REPO / "results/redundancy_loop.json"

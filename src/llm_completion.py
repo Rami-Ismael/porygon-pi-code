@@ -105,7 +105,7 @@ def apply_completion(team, paths, response):
 def complete(args, trials_override=None):
     m = load_manifest(args)
     key = os.environ.get("OPENROUTER_API_KEY")
-    h, _ = showdown_validator.runtime()
+    import hps_generate as h
     validator = h.Validator()
     try:
         for trial_index, trial in enumerate(m["trials"] if trials_override is None else trials_override):

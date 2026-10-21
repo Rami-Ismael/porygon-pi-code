@@ -1,16 +1,13 @@
-"""The pinned Showdown validator checkout, and a team written as Showdown paste text."""
+"""The pinned Showdown validator checkout, the format, and a team written as Showdown paste text.
+
+SHOWDOWN is the only place the checkout's path is written. hps_generate and
+matchup_db take their default from it, so validation and the battle records use
+the same Showdown without any caller setting it.
+"""
 from pathlib import Path
 
 FORMAT = "gen9championsvgc2026regmb"
-
-
-def runtime():
-    """hps_generate and matchup_db, both pointed at the frozen validator checkout."""
-    import hps_generate as h
-    import matchup_db as db
-    h.SHOWDOWN = Path.home() / ".local/share/vgc-pilot-runtime/validator-913da36"
-    db.SHOWDOWN = h.SHOWDOWN
-    return h, db
+SHOWDOWN = Path.home() / ".local/share/vgc-pilot-runtime/validator-913da36"
 
 
 def paste(team, h):

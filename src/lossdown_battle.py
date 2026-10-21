@@ -32,7 +32,6 @@ import pool
 import hps_generate
 from hps_generate import Validator
 from corpus import parse_team_text
-hps_generate.SHOWDOWN = Path.home() / ".local/share/vgc-pilot-runtime/validator-913da36"
 
 OUT = L.RES / "lossdown_battle.json"
 MEMBERS = ["F1_final_medium_noheldout", "G2_family_matrix_noprtrain_noheldout"]
@@ -98,7 +97,6 @@ def gen():
 
 def _stack():
     pool.REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
-    MDB.SHOWDOWN = hps_generate.SHOWDOWN
 
 
 def battle():

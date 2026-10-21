@@ -176,7 +176,7 @@ async def _generate(jobs, output, options, transport, validate, key, stop):
         raise RuntimeError('OPENROUTER_API_KEY is not configured; no requests sent')
     validator = None
     if validate is None and (queue or recover):
-        h, _ = showdown_validator.runtime()
+        import hps_generate as h
         validator = h.Validator()
         validate = lambda record, job: llm_completion.validate_record(record, job.manifest, job.trial, h, validator)
     gate = Controller(options)

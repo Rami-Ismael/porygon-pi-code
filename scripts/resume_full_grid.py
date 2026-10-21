@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
+from showdown_validator import SHOWDOWN
 import results
 
 # sha256 of the behaviour-cloning policy checkpoint (bc_100.zip) both sides play.
@@ -26,7 +27,7 @@ def restore_runtime():
              scratch/'src':ROOT/'src',scratch/'learnset_true.json':runtime/'files/learnset_true.json',
              scratch/'top50_evs.json':runtime/'files/top50_evs.json',
              scratch/'vgc-bench/teams':bench/'teams',scratch/'vgc-bench/vgc_bench':bench/'vgc_bench',
-             scratch/'vgc-bench/pokemon-showdown':runtime/'validator-913da36'}
+             scratch/'vgc-bench/pokemon-showdown':SHOWDOWN}
     for alias,target in aliases.items():
         if not alias.exists():
             if not target.exists(): raise RuntimeError('Missing durable dependency: '+str(target))

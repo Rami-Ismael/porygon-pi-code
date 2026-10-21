@@ -22,7 +22,7 @@ def prepare():
     original = json.loads((source/'manifest.json').read_text())
     m = copy.deepcopy(original)
     m['grid'] = {task:list(range(1,len(team_masks.paths_for(task))+1)) for task in team_masks.GRID}
-    h, _ = showdown_validator.runtime()
+    import hps_generate as h
     tables = h.build_tables()
     validator = h.Validator()
     old_ids = {t['id'] for t in m['trials']}

@@ -262,7 +262,7 @@ def optimize(args):
     if 'optimization' not in m:
         raise ValueError('run prepare first')
     train, dev = examples(m, 'train'), examples(m, 'dev')
-    h, _ = showdown_validator.runtime()
+    import hps_generate as h
     validator = h.Validator()
     # Retries go to LiteLLM, which backs off exponentially; more of them ride out shared-pool rate limits.
     lm = lm_for(m, num_retries=args.num_retries)

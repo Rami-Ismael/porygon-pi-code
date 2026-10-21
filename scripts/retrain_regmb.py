@@ -16,6 +16,7 @@ CODE = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(CODE/'src'))
 import encode
 import heldout as HO
+from showdown_validator import SHOWDOWN
 import numpy as np
 import torch
 import lossdown as L
@@ -79,7 +80,7 @@ def prepare(args):
     OUT.mkdir(parents=True,exist_ok=True)
     reg=json.loads(MANIFEST.read_text())
     if args.version=='v3':
-        reg=training_regulation(reg,mega_stone_users(Path.home()/'.local/share/vgc-pilot-runtime/validator-913da36'))
+        reg=training_regulation(reg,mega_stone_users(SHOWDOWN))
     save(OUT/'training-regulation.json',reg)
     V=encode.Vocab.from_regulation(reg)
     corpus,old,*_=X.setup(); data=L.load_data(include_heldout=True)   # remapped.npz is aligned to every row
@@ -100,7 +101,6 @@ def prepare(args):
     ti=np.flatnonzero(tok); tok[ti[tables.check(test[ti],rules)]]=False
     np.savez_compressed(OUT/'remapped.npz',X=train,valid=ok,xte=test,test_valid=tok)
     rng=np.random.default_rng(SEED)
-    H.SHOWDOWN=Path.home()/'.local/share/vgc-pilot-runtime/validator-913da36'
     validator=H.Validator()
     coverage={k:np.zeros(V.sizes[k],dtype=int) for k in L.KEYS}
     examples=[]; seen=set(); rejected=0

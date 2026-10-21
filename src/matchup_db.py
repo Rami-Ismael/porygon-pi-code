@@ -23,10 +23,9 @@ from slot_order import MODE as SLOT_ORDER, POLICY_TAG   # Pokémon order shuffle
 REPO = HERE.parent
 DEFAULT_DB = Path(os.environ.get("MATCHUP_DB", Path.home() / "vgc-data" / "matchup_regmb.sqlite"))
 PASTES = Path(os.environ.get("MATCHUP_PASTES", Path.home() / "vgc-data" / "pastes"))
-FORMAT = "gen9championsvgc2026regmb"
+from showdown_validator import FORMAT, SHOWDOWN   # the pinned checkout; written nowhere else
 POOL_DIR = Path("/tmp/vgc-pilot/vgc-bench/teams/reg_mb")          # VGCPastes Reg M-B pool (+ featured/)
 TOP50 = REPO / "results" / "top50_evs.json"
-SHOWDOWN = Path("/tmp/vgc-pilot/vgc-bench/pokemon-showdown")
 POLICY_FILE = Path("/tmp/bc_100.zip")                             # behaviour-cloning policy, both sides
 # Battles run on the fast evaluator unless MATCHUP_BACKEND=legacy (pair_shard.py over live servers).
 FAST_RUNNER_DIR = Path(os.environ.get("MATCHUP_FAST_RUNNER_DIR", Path.home() / "Documents/yakumsi-vault/Personal Project"

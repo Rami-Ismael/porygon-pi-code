@@ -8,6 +8,7 @@ import repo_paths  # puts src/ first on sys.path
 import llm_completion
 import results
 import showdown_validator
+import sys
 import team_masks
 
 
@@ -36,7 +37,7 @@ class RecoveryTests(unittest.TestCase):
             results.save(output/'manifest.json',manifest)
             p=output/'completions/s0-item-1.json'
             results.save(p,dict(request_hash=results.digest(payload),response=response,valid=False))
-            with patch.object(showdown_validator,'runtime',return_value=(h,None)),patch.dict(llm_completion.os.environ,{},clear=True),patch.object(llm_completion.urllib.request,'urlopen') as network:
+            with patch.dict(sys.modules, {'hps_generate': h}),patch.dict(llm_completion.os.environ,{},clear=True),patch.object(llm_completion.urllib.request,'urlopen') as network:
                 llm_completion.complete(SimpleNamespace(output=output))
                 llm_completion.complete(SimpleNamespace(output=output))
                 network.assert_not_called()
