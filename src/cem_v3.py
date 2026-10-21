@@ -16,6 +16,7 @@ import torch
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from showdown_validator import VGC_BENCH
 from checkpoints import load_checkpoint
 import foundation as FD
 import lossdown as L
@@ -292,7 +293,7 @@ def final():
         if k in seen: continue
         seen.add(k); top.append(r)
         if len(top) >= FINAL_N: break
-    pool.REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
+    pool.REPO = str(VGC_BENCH)
     d = Path(f"/tmp/vgc-pilot/{TAG}_final"); d.mkdir(parents=True, exist_ok=True)
     files = []
     for i, r in enumerate(top):
@@ -309,7 +310,7 @@ def heldout_eval(out):
     """The only place ranks 51-100 are battled: the final selected teams, once, after selection.
     Selection above used the top-50 only; nothing here feeds back into a generation."""
     if "heldout" in out or "final" not in out: return
-    pool.REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
+    pool.REPO = str(VGC_BENCH)
     d = Path(f"/tmp/vgc-pilot/{TAG}_final"); d.mkdir(parents=True, exist_ok=True); files = []
     for i, r in enumerate(out["final"]):
         f = d / f"{i:02d}.txt"; f.write_text(r["paste"]); files.append(str(f))

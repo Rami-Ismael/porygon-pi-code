@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 from repo_paths import ROOT  # also puts src/ first on sys.path
-from showdown_validator import SHOWDOWN
+from showdown_validator import SHOWDOWN, VGC_BENCH
 import results
 
 # sha256 of the behaviour-cloning policy checkpoint (bc_100.zip) both sides play.
@@ -22,7 +22,7 @@ def restore_runtime():
     runtime=Path.home()/'.local/share/vgc-pilot-runtime'
     scratch=Path('/tmp/vgc-pilot')
     scratch.mkdir(parents=True,exist_ok=True)
-    bench=runtime/'unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2'
+    bench=VGC_BENCH
     aliases={scratch/'.venv':runtime/'venv',scratch/'data':runtime/'data',
              scratch/'src':ROOT/'src',scratch/'learnset_true.json':runtime/'files/learnset_true.json',
              scratch/'top50_evs.json':runtime/'files/top50_evs.json',

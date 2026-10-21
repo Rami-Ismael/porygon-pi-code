@@ -17,12 +17,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # The pinned checkout and format, written out: the independent source the tests compare against.
 PINNED = Path.home() / ".local/share/vgc-pilot-runtime/validator-913da36"
 REG_MB = "gen9championsvgc2026regmb"
+# The pinned vgc-bench code checkout. Not the /tmp/vgc-pilot/vgc-bench staging copy, whose team pool differs.
+PINNED_VGC_BENCH = Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2"
 # report_regmb prints the shell command that was run to export the vocabulary:
 # a record of what happened, so it keeps the literal path.
 RECORDS = {"showdown_validator.py", "report_regmb.py", Path(__file__).name}
 
 
 class TheConstants(unittest.TestCase):
+    def test_vgc_bench_is_the_pinned_checkout(self):
+        self.assertEqual(SV.VGC_BENCH, PINNED_VGC_BENCH)
+
     def test_showdown_is_the_pinned_checkout(self):
         self.assertEqual(SV.SHOWDOWN, PINNED)
 
@@ -37,6 +42,10 @@ def sources():
 
 
 class PinnedCheckout(unittest.TestCase):
+    def test_the_vgc_bench_path_is_written_once(self):
+        found = [p.name for p, text in sources() if p.name not in RECORDS and PINNED_VGC_BENCH.name in text]
+        self.assertEqual(found, [], f"{PINNED_VGC_BENCH.name} is written outside showdown_validator.py")
+
     def test_the_checkout_path_is_written_once(self):
         found = [p.name for p, text in sources() if p.name not in RECORDS and PINNED.name in text]
         self.assertEqual(found, [], f"{PINNED.name} is written outside showdown_validator.py")
