@@ -20,9 +20,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 import matchup_db as mdb
+from showdown_validator import VGC_BENCH
 
 RUNTIME = Path.home() / ".local/share/vgc-pilot-runtime"
-VGCBENCH = RUNTIME / "unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2"
+VGCBENCH = VGC_BENCH
 PY = RUNTIME / "venv/bin/python"
 POLICY_ZIP = RUNTIME / "downloads/bc_100.zip"       # sha256 57f5edcab415cf6c = policy_id 1 in the database
 PORTS = [8123, 8124, 8125, 8126, 8127, 8128, 8129]

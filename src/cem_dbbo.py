@@ -35,6 +35,7 @@ import torch
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from showdown_validator import VGC_BENCH
 import cem_v3 as CV
 import diversity_loops as DL
 import foundation as FD
@@ -101,7 +102,7 @@ if SMOKE:
     TAG += "_smoke"; OUT = L.RES / f"{TAG}.json"
     GENS, PROPOSE, BATTLE, TOP_DELIVER, DELIVER_BATTLES, FT_STEPS, FINAL_N, FINAL_BATTLES = 1, 16, 8, 2, 8, 20, 2, 8
     CV.FT_EPOCHS = 1
-REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
+REPO = str(VGC_BENCH)
 DEV, COLS, NINF, NAN = L.DEV, L.COLS, -float("inf"), float("nan")
 ORDER = list(D.ORDER)
 DL.PROPOSE = PROPOSE

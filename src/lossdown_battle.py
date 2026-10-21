@@ -23,6 +23,7 @@ import torch
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from showdown_validator import VGC_BENCH
 import lossdown as L
 import asked_vs_got as X
 import activesearch as A
@@ -96,7 +97,7 @@ def gen():
 
 
 def _stack():
-    pool.REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
+    pool.REPO = str(VGC_BENCH)
 
 
 def battle():

@@ -11,7 +11,9 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 DIR = ROOT / 'results/dibo_v4_vs_cem_20261013/stall-20261014'
-BENCH = '/Users/ramiismael/.local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2'
+sys.path.insert(0, str(ROOT / 'src'))
+from showdown_validator import VGC_BENCH
+BENCH = str(VGC_BENCH)
 os.chdir(BENCH)
 sys.path[:0] = [str(ROOT / 'src'), BENCH]
 import pair_shard as P

@@ -17,6 +17,7 @@ import torch, torch.nn as nn, torch.nn.functional as F
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from showdown_validator import VGC_BENCH
 import activesearch as A
 import diffusion as D
 import hpsdiffusion as H
@@ -211,7 +212,7 @@ def battle():
     one battle per (generated team, top-50 column) cell via matchup_db.score_pastes."""
     # /tmp/vgc-pilot lost the vgc_bench package and Showdown node_modules to tmp cleanup;
     # runtime copies are the same commits (vgc-bench d79f953, Showdown 913da36)
-    pool.REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
+    pool.REPO = str(VGC_BENCH)
     con = MDB.connect()
     out = json.load(open(OUT))
     todo = [t for t, c in out["cells"].items() if "y" not in c]
@@ -241,7 +242,7 @@ def battle():
 def fill():
     """Battle any (team, top-50) cell still missing -- a shard that hangs on exit is killed and its
     battles discarded -- then recompute every cell's scores from the matchup matrix."""
-    pool.REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
+    pool.REPO = str(VGC_BENCH)
     con = MDB.connect(); out = json.load(open(OUT))
     ids = sorted({t for c in out["cells"].values() for t in c.get("team_id", [])})
     legal = {t for (t,) in con.execute(f"SELECT team_id FROM team WHERE legal=1 AND team_id IN ({','.join('?' * len(ids))})", ids)}

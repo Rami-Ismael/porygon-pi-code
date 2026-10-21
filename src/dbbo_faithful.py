@@ -30,6 +30,7 @@ import torch
 
 sys.path.insert(0, "/tmp/vgc-pilot/src")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from showdown_validator import VGC_BENCH
 import foundation as FD
 import lossdown as L
 import lossdown_battle as LB
@@ -66,7 +67,7 @@ SMOKE = bool(os.environ.get("DBBO_SMOKE"))
 if SMOKE: TAG += "_smoke"; ROUNDS, N, EPOCHS, FINAL_N, FINAL_BATTLES = 2, 8, 1, 2, 8
 OUT = L.RES / f"{TAG}.json"
 DEV = L.DEV
-REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
+REPO = str(VGC_BENCH)
 
 
 def save(out): json.dump(out, open(OUT, "w"))

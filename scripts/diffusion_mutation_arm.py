@@ -22,6 +22,7 @@ _spec = importlib.util.spec_from_file_location("dsame_experiment", HERE / "dsame
 DS = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(DS)
 A, MDB, HO, DM = DS.A, DS.MDB, DS.HO, DS.DM
 import foundation as FD
+from showdown_validator import VGC_BENCH
 import lossdown as L
 import diffusion as D
 import hps_generate
@@ -38,7 +39,7 @@ OUT = REPO / "results" / "diffusion_mutation_arm.json"
 DSAME = REPO / "results" / "dsame_experiment.json"          # pilot turns + bin edges, reused
 WORK = Path("/tmp/vgc-pilot/dmut")
 PORTS = [8401, 8402, 8403, 8404, 8405, 8406]                # this run's own servers (8123-8129 are shared)
-A.pool.REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")   # as cem_v3
+A.pool.REPO = str(VGC_BENCH)   # as cem_v3
 ARMS = ("hand", "uniform", "diffusion")
 SEEDS, GENS, BATTLE, BATTLES, GRID, TOPV, VERIFY_CELL = DS.SEEDS, DS.GENS, DS.BATTLE, DS.BATTLES, DS.GRID, DS.TOPV, DS.VERIFY_CELL
 CHILDREN, PBATCH, MAX_ATTEMPTS = DS.CHILDREN, 200, 20 * DS.CHILDREN
