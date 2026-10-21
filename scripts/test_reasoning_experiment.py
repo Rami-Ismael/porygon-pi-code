@@ -10,6 +10,7 @@ import battles
 import llm_completion
 import results
 import showdown_validator
+import sys
 import team_masks
 import reasoning_experiment as E
 
@@ -196,7 +197,7 @@ class ReasoningExperimentTests(unittest.TestCase):
         entry, folder, m = runs[0]
         h = Mock()
         self.record(entry, folder)
-        with patch.object(showdown_validator, 'runtime', return_value=(h, None)), patch.object(llm_completion.urllib.request, 'urlopen') as request:
+        with patch.dict(sys.modules, {'hps_generate': h}), patch.object(llm_completion.urllib.request, 'urlopen') as request:
             llm_completion.complete(SimpleNamespace(output=folder))
             request.assert_not_called()
             (folder / 'completions/s0-item-1.json').unlink()
@@ -215,7 +216,7 @@ class ReasoningExperimentTests(unittest.TestCase):
             message={'content': ''})], usage={'completion_tokens_details': {'reasoning_tokens': 16384}})).encode()
         h = Mock()
         with patch.dict(llm_completion.os.environ, {'OPENROUTER_API_KEY': 'test-only'}), \
-                patch.object(showdown_validator, 'runtime', return_value=(h, None)), \
+                patch.dict(sys.modules, {'hps_generate': h}), \
                 patch.object(llm_completion.urllib.request, 'urlopen', return_value=response) as request:
             llm_completion.complete(SimpleNamespace(output=folder))
         sent = json.loads(request.call_args.args[0].data)
