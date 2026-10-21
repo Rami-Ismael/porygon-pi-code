@@ -23,7 +23,7 @@ from slot_order import MODE as SLOT_ORDER, POLICY_TAG   # Pokémon order shuffle
 REPO = HERE.parent
 DEFAULT_DB = Path(os.environ.get("MATCHUP_DB", Path.home() / "vgc-data" / "matchup_regmb.sqlite"))
 PASTES = Path(os.environ.get("MATCHUP_PASTES", Path.home() / "vgc-data" / "pastes"))
-from showdown_validator import FORMAT, SHOWDOWN   # the pinned checkout; written nowhere else
+from showdown_validator import FORMAT, SHOWDOWN, Validator   # the pinned checkout and its one Validator
 POOL_DIR = Path("/tmp/vgc-pilot/vgc-bench/teams/reg_mb")          # VGCPastes Reg M-B pool (+ featured/)
 TOP50 = REPO / "results" / "top50_evs.json"
 POLICY_FILE = Path("/tmp/bc_100.zip")                             # behaviour-cloning policy, both sides
@@ -141,18 +141,6 @@ def species_keys(canon):
         e = c.dex_entry(s["species"])
         base.append(_norm(e.get("baseSpecies", s["species"])) if e else _norm(s["species"]))
     return ",".join(sorted(full)), ",".join(sorted(base))
-
-class Validator:
-    """Showdown's own TeamValidator through the project's batch script."""
-    def __init__(self):
-        self.p = subprocess.Popen(["node", "validate-teams-batch.js"], stdin=subprocess.PIPE,
-                                  stdout=subprocess.PIPE, text=True, cwd=str(SHOWDOWN))
-    def __call__(self, text, fmt=FORMAT):
-        self.p.stdin.write(json.dumps({"format": fmt, "team": text}) + "\n"); self.p.stdin.flush()
-        r = json.loads(self.p.stdout.readline())
-        return None if r["valid"] else "; ".join(r["errors"])
-    def close(self):
-        self.p.stdin.close(); self.p.wait()
 
 # ---------------------------------------------------------------- database
 def connect(path=DEFAULT_DB):
