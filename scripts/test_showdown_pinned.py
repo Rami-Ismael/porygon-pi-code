@@ -20,8 +20,9 @@ REG_MB = "gen9championsvgc2026regmb"
 # The pinned vgc-bench code checkout. Not the /tmp/vgc-pilot/vgc-bench staging copy, whose team pool differs.
 PINNED_VGC_BENCH = Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2"
 # report_regmb prints the shell command that was run to export the vocabulary:
-# a record of what happened, so it keeps the literal path.
-RECORDS = {"showdown_validator.py", "report_regmb.py", Path(__file__).name}
+# a record of what happened, so it keeps the literal path. The two test files write
+# the path out on purpose: it is the independent value they compare against.
+RECORDS = {"showdown_validator.py", "report_regmb.py", Path(__file__).name, "test_showdown_validator.py"}
 
 
 class TheConstants(unittest.TestCase):

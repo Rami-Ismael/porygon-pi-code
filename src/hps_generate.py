@@ -20,25 +20,11 @@ from pathlib import Path
 import numpy as np
 from corpus import load_corpus, norm, STATS, NATURES, dex_entry, MEGA_STONE_OF
 from encode import Legality
-from showdown_validator import FORMAT, SHOWDOWN   # the pinned checkout; written nowhere else
+from showdown_validator import FORMAT, SHOWDOWN, Validator   # the pinned checkout and its one Validator
 
 TRUE = {k: sorted(m for m in v if m != "[MASK]")
         for k, v in json.load(open("/tmp/vgc-pilot/learnset_true.json")).items()}
 
-
-class Validator:
-    def __init__(self, showdown=None):
-        """One `node validate-teams-batch.js` process in `showdown`, default this module's SHOWDOWN."""
-        self.p = subprocess.Popen(["node", "validate-teams-batch.js"],
-                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                  text=True, cwd=str(showdown or SHOWDOWN))
-    def __call__(self, text, fmt=FORMAT):
-        self.p.stdin.write(json.dumps({"format": fmt, "team": text}) + "\n")
-        self.p.stdin.flush()
-        r = json.loads(self.p.stdout.readline())
-        return None if r["valid"] else "; ".join(r["errors"])
-    def close(self):
-        self.p.stdin.close(); self.p.wait()
 
 
 def slot_to_text(sl):

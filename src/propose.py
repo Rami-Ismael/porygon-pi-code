@@ -15,21 +15,8 @@ from corpus import load_corpus, parse_team, norm, STATS, TEAMS
 from encode import Vocab, team_fields, canon, FIELDS, NF, NSLOT
 from model import MaskedFieldModel, random_mask, permute_slots, resample_fields
 
-from showdown_validator import FORMAT, SHOWDOWN   # the pinned checkout; written nowhere else
+from showdown_validator import FORMAT, SHOWDOWN, Validator   # the pinned checkout and its one Validator
 DEV = "mps" if torch.backends.mps.is_available() else "cpu"
-
-class Validator:
-    def __init__(self):
-        self.p = subprocess.Popen(["node", "validate-teams-batch.js"],
-                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                  text=True, cwd=str(SHOWDOWN))
-    def __call__(self, text, fmt=FORMAT):
-        self.p.stdin.write(json.dumps({"format": fmt, "team": text}) + "\n")
-        self.p.stdin.flush()
-        r = json.loads(self.p.stdout.readline())
-        return None if r["valid"] else "; ".join(r["errors"])  # NOT truncated: callers parse every error
-    def close(self):
-        self.p.stdin.close(); self.p.wait()
 
 def slot_to_text(sl):
     """Render one parsed slot back to Showdown paste form."""
