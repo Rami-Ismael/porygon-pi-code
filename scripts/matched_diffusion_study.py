@@ -73,7 +73,7 @@ def run():
             gen=copy.deepcopy(m);gen['seed']=m['seed']+100000*rep
             D.generate(SimpleNamespace(output=OUT/f'r{rep}',manifest=gen,members=D.MEMBERS))
             snapshot('generating')
-        h,db=showdown_validator.runtime();groups={}
+        import hps_generate as h, matchup_db as db;groups={}
         for rep in range(3):
             for t in m['trials']:
                 row=json.loads((OUT/f'r{rep}/completions'/(t['id']+'.json')).read_text())

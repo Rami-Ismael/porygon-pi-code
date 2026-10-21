@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 from encode import Vocab,team_fields
+from showdown_validator import SHOWDOWN
 from regmb_training_policy import sample_moves,encode_training_team,training_regulation,mega_stone_users
 
 
@@ -32,7 +33,7 @@ class TrainingPolicyTests(unittest.TestCase):
         self.assertTrue(allowed[0,1]);self.assertFalse(allowed[0,2]);self.assertTrue(allowed[0,3])
 
     def test_floettite_forme_mapping_is_exact(self):
-        users=mega_stone_users(Path.home()/'.local/share/vgc-pilot-runtime/validator-913da36')
+        users=mega_stone_users(SHOWDOWN)
         self.assertEqual(set(users['floettite']),{'floetteeternal','floettemega'})
         reg={'slots':{sp:dict(abilities=['a'],items=['floettite','leftovers'],abilityItems={'a':['floettite','leftovers']}) for sp in ['kingambit','floette','floetteeternal','floettemega']}}
         out=training_regulation(reg,users)

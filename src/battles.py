@@ -104,7 +104,7 @@ def fast_runner(folder):
     global _fast_runner
     if _fast_runner is None or _fast_runner.closed:
         import atexit
-        _, db = showdown_validator.runtime()
+        import matchup_db as db
         if str(db.FAST_RUNNER_DIR) not in sys.path: sys.path.append(str(db.FAST_RUNNER_DIR))
         from fast_battle_runner import FastBattleRunner
         _fast_runner = FastBattleRunner(Path(folder) / f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{time.time_ns()}",
@@ -171,7 +171,7 @@ def battle(args, candidates_override=None, on_result=None):
                          "the behaviour-cloning PPO policy) was removed on 2026-10-19 and only the fast "
                          "evaluator remains. Labels it recorded stay readable and are archived before a re-battle.")
     archive_legacy_labels(args.output)
-    h, db = showdown_validator.runtime()
+    import hps_generate as h, matchup_db as db
     m = load_manifest(args)
     runner = fast_runner(args.output / 'fast-battles')
     config = dict(format=showdown_validator.FORMAT, policy="behaviour-cloning both sides", backend='fast',

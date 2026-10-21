@@ -26,7 +26,6 @@ import numpy as np
 sys.path.insert(0, "/tmp/vgc-pilot/src")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import hps_generate
-hps_generate.SHOWDOWN = Path.home() / ".local/share/vgc-pilot-runtime/validator-913da36"
 import activesearch as A
 import diffusion as D
 import matchup_db as MDB
@@ -35,7 +34,6 @@ from encode import NF, NSLOT, canon
 from hps_generate import Validator, slot_to_text
 
 A.pool.REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
-MDB.SHOWDOWN = hps_generate.SHOWDOWN
 REPO = Path("/Users/ramiismael/Documents/code/vgc-team-generator-pilot")
 TASKS_OUT = REPO / "results/random_fill_tasks.json"
 OUT = REPO / "results/random_fill_baseline.json"

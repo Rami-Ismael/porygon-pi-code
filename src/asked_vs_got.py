@@ -29,7 +29,6 @@ import hps_generate
 from hps_generate import Validator
 from checkpoints import load_checkpoint
 # /tmp Showdown lost node_modules files to tmp cleanup (2026-10-04); durable validator copy, same commit 913da36
-hps_generate.SHOWDOWN = Path.home() / ".local/share/vgc-pilot-runtime/validator-913da36"
 
 REPO = Path("/Users/ramiismael/Documents/code/vgc-team-generator-pilot")
 RES = REPO / "results"
@@ -213,7 +212,6 @@ def battle():
     # /tmp/vgc-pilot lost the vgc_bench package and Showdown node_modules to tmp cleanup;
     # runtime copies are the same commits (vgc-bench d79f953, Showdown 913da36)
     pool.REPO = str(Path.home() / ".local/share/vgc-pilot-runtime/unpacked/vgc-bench-d79f9532947ac114dce1dda2456a590afcd375b2")
-    MDB.SHOWDOWN = hps_generate.SHOWDOWN
     con = MDB.connect()
     out = json.load(open(OUT))
     todo = [t for t, c in out["cells"].items() if "y" not in c]

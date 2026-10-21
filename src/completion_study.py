@@ -50,7 +50,7 @@ def random_fill(team, paths, tables, rng, h, validator):
 
 def prepare(args):
     import numpy as np
-    h, db = showdown_validator.runtime()
+    import hps_generate as h, matchup_db as db
     destination = args.output / "manifest.json"
     if destination.exists():
         raise ValueError("manifest already exists; use another directory or resume")

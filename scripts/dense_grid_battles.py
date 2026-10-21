@@ -29,7 +29,7 @@ def worker(index,count,baseline=None,diffusion=None):
             if p.exists():
                 r=json.loads(p.read_text())
                 if r['valid']: candidates.append((prefix+t['id'],r['team'],source))
-    h,db=showdown_validator.runtime()
+    import hps_generate as h, matchup_db as db
     # Identical teams always go to the same process, preventing cache races.
     selected=[(label,team,dest) for label,team,dest in candidates
               if int(results.digest(db.canonical_paste(showdown_validator.paste(team,h))),16)%count==index]

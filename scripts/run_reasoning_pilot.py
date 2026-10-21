@@ -19,7 +19,7 @@ import reasoning_experiment as E
 def fresh_starters(parent, count, seed):
     """Sample legal starters without generating unused random-fill controls."""
     import numpy as np
-    h, db = showdown_validator.runtime()
+    import hps_generate as h, matchup_db as db
     tables = h.build_tables()
     rng = np.random.default_rng(seed)
     m = copy.deepcopy(parent)

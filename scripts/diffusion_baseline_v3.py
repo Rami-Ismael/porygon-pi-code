@@ -83,7 +83,7 @@ def generate(args):
         raise ValueError('generation configuration changed; use a fresh output directory')
     results.save(config_path, config)
     f = L.ensemble_fn(funcs)
-    h, _ = showdown_validator.runtime()
+    import hps_generate as h
     validator = h.Validator()
     try:
         for i, trial in enumerate(args.manifest['trials']):

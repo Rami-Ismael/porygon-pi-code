@@ -67,7 +67,7 @@ def run(args):
 
 def battle_worker(index,count):
     """Score the legal completions only; the comparison is between the two prompts."""
-    h,db=showdown_validator.runtime();jobs=[]
+    import hps_generate as h, matchup_db as db;jobs=[]
     for f in folders():
         m=read(f/'manifest.json');tag=f.parent.name.split('-')[-1]+f.name  # v3r0: no hyphen, so the starter index still parses
         for t in m['trials']:

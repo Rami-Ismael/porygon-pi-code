@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -150,7 +151,7 @@ class LegalChoiceOptimizeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             results.save(Path(tmp) / 'manifest.json', self.m)
             args = SimpleNamespace(output=Path(tmp), optimizer='mipro', num_retries=3)
-            with unittest.mock.patch.object(showdown_validator, 'runtime', return_value=(self.h, None)), \
+            with unittest.mock.patch.dict(sys.modules, {'hps_generate': self.h}), \
                  unittest.mock.patch.object(O, 'lm_for', return_value=DummyLM([])):
                 self.h.Validator = Mock(return_value=self.validator)
                 with self.assertRaisesRegex(ValueError, 'MIPROv2'):
@@ -202,7 +203,7 @@ class ReflectionModelTests(unittest.TestCase):
                                    threads=1, seed=1, reflection_model='openai/gpt-6-luna', reflection_effort='high',
                                    num_retries=8)
             h = Mock(Validator=Mock(return_value=Mock()))
-            with unittest.mock.patch.object(showdown_validator, 'runtime', return_value=(h, None)), \
+            with unittest.mock.patch.dict(sys.modules, {'hps_generate': h}), \
                  unittest.mock.patch.object(O, 'lm_for', return_value=DummyLM([])), \
                  unittest.mock.patch.object(O, 'reflection_lm_for', return_value=writer) as make_writer, \
                  unittest.mock.patch.object(dspy, 'GEPA', side_effect=fake_gepa):
@@ -265,7 +266,7 @@ class ReflectionShapeTests(unittest.TestCase):
             args = SimpleNamespace(output=Path(tmp), optimizer='gepa', battles=False, alpha=.5, budget='light',
                                    threads=1, seed=1, reflection_model=None, reflection_effort='high', num_retries=3)
             h = Mock(Validator=Mock(return_value=Mock()))
-            with unittest.mock.patch.object(showdown_validator, 'runtime', return_value=(h, None)), \
+            with unittest.mock.patch.dict(sys.modules, {'hps_generate': h}), \
                  unittest.mock.patch.object(O, 'lm_for', return_value=DummyLM([])), \
                  unittest.mock.patch.object(dspy, 'GEPA', side_effect=fake_gepa):
                 with self.assertRaises(Stop):

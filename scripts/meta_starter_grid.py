@@ -63,7 +63,7 @@ def prepare():
     import numpy as np
     if (BASE/'manifest.json').exists(): return
     old=json.loads((ROOT/'results/llm-baseline-full-grid/manifest.json').read_text())
-    h,db=showdown_validator.runtime()
+    import hps_generate as h, matchup_db as db
     tables=h.build_tables()
     regulation=json.loads((ROOT/'data/regmb-vocabulary.json').read_text())
     m={k:copy.deepcopy(v) for k,v in old.items() if k not in ('starts','trials','extension','source_sha256')}
