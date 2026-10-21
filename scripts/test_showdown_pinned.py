@@ -9,7 +9,6 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
-from unittest import mock
 
 import repo_paths  # puts src/ first on sys.path
 import showdown_validator as SV
@@ -54,32 +53,50 @@ class PinnedCheckout(unittest.TestCase):
 
 
 
+def fresh(case, code):
+    """Run code in a new Python with this tree's src/ first; return its printed lines.
+    A fresh process matters: other test modules put /tmp/vgc-pilot/src (an older copy of
+    these modules) on sys.path, so an in-process import can return the wrong file."""
+    out = subprocess.run([sys.executable, "-c", "import repo_paths\n" + code], cwd=Path(__file__).parent,
+                         capture_output=True, text=True, timeout=300)
+    case.assertEqual(out.returncode, 0, out.stderr[-2000:])
+    return out.stdout.strip().splitlines()
+
+
+VALIDATOR_CWD = """
+import {module} as m
+from unittest import mock
+from pathlib import Path
+with mock.patch.object(m.subprocess, "Popen") as popen:
+    m.Validator({args})
+print(m.__file__)
+print(popen.call_args.kwargs["cwd"])
+"""
+
+
 class ConsumerDefaults(unittest.TestCase):
     """Each module that runs Showdown defaults to the pinned checkout with no caller setting it."""
     def test_matchup_db_defaults_to_the_pinned_checkout(self):
-        import matchup_db
-        self.assertEqual(matchup_db.SHOWDOWN, PINNED)
-        self.assertEqual(matchup_db.FORMAT, REG_MB)
+        file, showdown, fmt = fresh(self, "import matchup_db as m\nprint(m.__file__); print(m.SHOWDOWN); print(m.FORMAT)")
+        self.assertEqual(Path(file).parent, ROOT / "src")
+        self.assertEqual((Path(showdown), fmt), (PINNED, REG_MB))
 
     def test_hps_generate_validator_runs_in_the_pinned_checkout(self):
-        h = importable(self, "hps_generate")
-        with mock.patch.object(h.subprocess, "Popen") as popen:
-            h.Validator()
-        self.assertEqual(popen.call_args.kwargs["cwd"], str(PINNED))
+        file, cwd = fresh(self, VALIDATOR_CWD.format(module="hps_generate", args=""))[-2:]
+        self.assertEqual(Path(file).parent, ROOT / "src")
+        self.assertEqual(cwd, str(PINNED))
 
     def test_propose_validator_runs_in_the_pinned_checkout(self):
-        p = importable(self, "propose")
-        with mock.patch.object(p.subprocess, "Popen") as popen:
-            p.Validator()
-        self.assertEqual(popen.call_args.kwargs["cwd"], str(PINNED))
+        file, cwd = fresh(self, VALIDATOR_CWD.format(module="propose", args=""))[-2:]
+        self.assertEqual(Path(file).parent, ROOT / "src")
+        self.assertEqual(cwd, str(PINNED))
 
 
 class ValidatorTakesACheckout(unittest.TestCase):
     def test_validator_runs_in_the_checkout_it_is_given(self):
-        h = importable(self, "hps_generate")
-        with mock.patch.object(h.subprocess, "Popen") as popen:
-            h.Validator(showdown=Path("/elsewhere/pokemon-showdown"))
-        self.assertEqual(popen.call_args.kwargs["cwd"], "/elsewhere/pokemon-showdown")
+        args = 'showdown=Path("/elsewhere/pokemon-showdown")'
+        cwd = fresh(self, VALIDATOR_CWD.format(module="hps_generate", args=args))[-1]
+        self.assertEqual(cwd, "/elsewhere/pokemon-showdown")
 
 
 class CallersImportLazily(unittest.TestCase):
@@ -92,15 +109,6 @@ class CallersImportLazily(unittest.TestCase):
                              capture_output=True, text=True, timeout=300)
         self.assertEqual(out.returncode, 0, out.stderr[-2000:])
         self.assertEqual(out.stdout.strip().splitlines()[-1], "False")
-
-
-def importable(case, name):
-    """The module, or a skip naming why it does not import here (it needs the /tmp/vgc-pilot data)."""
-    try:
-        return __import__(name)
-    except (FileNotFoundError, ImportError) as error:
-        case.skipTest(f"{name} does not import here: {error}")
-
 
 
 if __name__ == "__main__":
