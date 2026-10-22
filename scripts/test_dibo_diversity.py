@@ -138,7 +138,7 @@ class DiversityTests(unittest.TestCase):
                     seq[0]+=1
                     result.append(dict(self.a,key=str(seq[0]),paste=self.a['paste'] if seq[0]%2 else self.c['paste'],_terms=[0,0]))
                 return result
-            rt.records=records; rt.refine=lambda records,*a:records
+            rt.records=records; rt.refine=lambda records,*a,**k:records
             out=rt.propose(None,Posterior(),None,0,{'1'})
             self.assertEqual(len(out['selected']),2,arm)
             self.assertNotIn('1',[r['key'] for r in out['selected']],arm)

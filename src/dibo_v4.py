@@ -239,7 +239,7 @@ class Runtime:
         return records
 
     @torch.no_grad()
-    def refine(self, records, prior, ensemble, seen=()):
+    def refine(self, records, prior, ensemble, seen=(), *, rng):
         """Categorical ascent: cheap neighbor proposal, exact full-density acceptance.
 
         A surrogate/conditional score proposes one of four alternatives. The
@@ -248,7 +248,7 @@ class Runtime:
         """
         current = list(records); excluded = set(seen)
         for iteration in range(self.cfg["local_steps"]):
-            columns = np.random.randint(L.COLS, size=len(current))
+            columns = rng.integers(L.COLS, size=len(current))
             improved = 0
             for c in sorted(set(columns)):
                 indices = np.flatnonzero(columns == c)
@@ -292,7 +292,7 @@ class Runtime:
 
     def propose(self, prior, posterior, ensemble, generation, seen):
         torch.manual_seed(self.cfg["seed"] + generation * 1000 + 500)
-        np.random.seed(self.cfg["seed"] + generation * 1000 + 500)
+        rng = np.random.default_rng(self.cfg["seed"] + generation * 1000 + 500)
         records, keys, tried = [], set(seen), 0
         raw_accepted = []
         limit = self.cfg["propose"] * self.cfg["attempt_factor"]
@@ -312,7 +312,7 @@ class Runtime:
                 print(f'round {generation}: {len(records)}/{self.cfg["propose"]} distinct proposals from {tried} draws',flush=True)
         if len(records) < self.cfg["battle"]:
             raise RuntimeError(f"only {len(records)} new legal proposals after {tried} draws; need {self.cfg['battle']}")
-        records = self.refine(records, prior, ensemble, seen)
+        records = self.refine(records, prior, ensemble, seen, rng=rng)
         records = [{k:v for k,v in r.items() if k!='_terms'} for r in records]
         selected = DC.unique_top(records, self.cfg["battle"], seen)
         if len(selected) != self.cfg["battle"]:

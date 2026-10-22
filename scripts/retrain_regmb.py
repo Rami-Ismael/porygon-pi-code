@@ -191,7 +191,7 @@ def train(args):
             if any(previous['cfg'][k]!=getattr(args,k) for k in ['epochs','lr','batch']) or previous['provenance']['embedding_steps']!=args.embedding_steps:
                 raise ValueError('training settings changed; use --replace explicitly')
             print('Already trained:',name,flush=True);continue
-        torch.manual_seed(SEED);np.random.seed(SEED)
+        torch.manual_seed(SEED)
         ck=load_checkpoint(L.CK/(member+'.pt'),map_location=L.DEV);cfg=dict(L.DEFAULT,**ck['cfg'])
         idx=tr[(tag[tr]==L.TEST_TAG)|(tag[tr]==0)|((d['M'][tr,:,1].sum(1)>0) if cfg['mrow'] else False)]
         if cfg['mrow']:idx=np.setdiff1d(idx,L.matrix_holdout(d))
