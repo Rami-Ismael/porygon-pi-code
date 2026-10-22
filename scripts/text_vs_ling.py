@@ -5,10 +5,12 @@ and classifier-free guidance weight 2 (the project's selected decoding profile).
 Ling (inclusionai/ling-3.0-flash-vl), filling the same masks through OpenRouter under three prompt arms. The Mask Lab is the project's completion test: five
 random legal starting teams with 270 masked fields (Stat Points, items, moves, whole Pokémon, abilities, natures),
 each filled once per method. A fill is legal when the completed team keeps every unmasked field and passes Showdown's
-Regulation M-B validator. Its panels file holds every legal filled team's battle results: one battle against each of
-the 49 distinct teams among the top-50 meta teams (the 50 best-placed teams of the collected meta), with the
-behaviour-cloning policy on both sides. Classifier-free guidance mixes the model's prediction with and without the
-target win rate in the prompt; weight 2 leans twice as hard toward the prompted one.
+Regulation M-B validator. The run's panels.json holds every legal filled team's battle results: one battle against
+each of the 49 distinct teams among the top-50 meta teams (the 50 best-placed teams of the collected meta), with the
+behaviour-cloning battle policy (VGC-Bench's, trained to copy the choices in recorded battles) on both sides.
+Classifier-free guidance runs the model with and without the target win rate in the prompt and combines the logits as
+w × prompted + (1 − w) × unprompted; at weight 2 that extrapolates past the prompted prediction, away from the
+unprompted one.
 
 Statistics are those of mask_lab_textdiff.py report: differences paired on the same mask, each starting team weighted
 equally, 95% bootstrap over the five starting teams. "Net" keeps the original team when a fill is rejected.
@@ -21,9 +23,12 @@ run_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.expanduser(
     "~/Documents/yakumsi-vault/Personal Project/Using Advance method search in the whole search of possible vgc pokemon "
     "format to find the right counter to a pokemon team/team_completion_pipeline/runs/prompt-ab")
 SEED = 20261008
-LOW, HIGH = 100, -100                    # 2.5% and 97.5% of the 4,000 bootstrap draws
-LING_ARMS = ["regmb@16384", "baseline@16384", "baseline@4096"]     # prompt @ output-token limit
-BEST_ARM = "regmb@16384"                                           # the regulation-grounded prompt
+LOW_INDEX, HIGH_INDEX = 100, -100        # 2.5% and 97.5% of the 4,000 sorted bootstrap draws
+ARM_NAMES = {"regmb@16384": "regulation-grounded prompt, 16,384-token limit",          # arm id: prompt @ token limit
+             "baseline@16384": "prompt without the regulation reference, 16,384-token limit",
+             "baseline@4096": "prompt without the regulation reference, 4,096-token limit"}
+LING_ARMS = list(ARM_NAMES)
+BEST_ARM = LING_ARMS[0]                                            # the regulation-grounded prompt
 
 panels = json.load(open(os.path.join(run_dir, "panels.json")))["panels"]
 masks = json.load(open(os.path.join(run_dir, "eval2.tasks.json")))["tasks"]
@@ -43,12 +48,12 @@ def start_weighted_bootstrap(pairs):
     if not by_start: return None
     means = [sum(v) / len(v) for v in by_start.values()]
     rng = random.Random(SEED); draws = sorted(sum(rng.choice(means) for _ in means) / len(means) for _ in range(4000))
-    return dict(mean=sum(means) / len(means), lo=draws[LOW], hi=draws[HIGH], n=sum(len(v) for v in by_start.values()))
+    return dict(mean=sum(means) / len(means), lo=draws[LOW_INDEX], hi=draws[HIGH_INDEX], n=sum(len(v) for v in by_start.values()))
 
 
-def paired(rows, value):
-    """Bootstrap of value(row) over the rows where it is defined (both fills legal)."""
-    return start_weighted_bootstrap([(r["start"], value(r)) for r in rows if value(r) is not None])
+def paired_difference(rows, a, b):
+    """Bootstrap of row[a] − row[b] over the rows where both are defined (both fills legal)."""
+    return start_weighted_bootstrap([(r["start"], r[a] - r[b]) for r in rows if r[a] is not None and r[b] is not None])
 
 
 def net(row, method):
@@ -56,7 +61,6 @@ def net(row, method):
     return (row[method] if row[method] is not None else row["original"]) - row["original"]
 
 
-difference_of = lambda a, b: (lambda r: None if r[a] is None or r[b] is None else r[a] - r[b])   # per-row getter
 rows_by_mask_type = {}
 for mask in masks:
     row = dict(start=mask["source"], original=win_rate(f"orig:{mask['source']}"), text=win_rate(f"textdiff:{mask['id']}"))
@@ -67,11 +71,11 @@ groups = list(rows_by_mask_type.items()) + [("all", [r for v in rows_by_mask_typ
 results = {}
 for mask_type, rows in groups:
     stats = dict(n=len(rows), legal={k: sum(r[k] is not None for r in rows) for k in ["text"] + LING_ARMS},
-                 text_vs_original=paired(rows, difference_of("text", "original")),
+                 text_vs_original=paired_difference(rows, "text", "original"),
                  net_text=start_weighted_bootstrap([(r["start"], net(r, "text")) for r in rows]))
     for arm in LING_ARMS:
-        stats[f"{arm}_vs_original"] = paired(rows, difference_of(arm, "original"))
-        stats[f"text_vs_{arm}_both_legal"] = paired(rows, difference_of("text", arm))
+        stats[f"{arm}_vs_original"] = paired_difference(rows, arm, "original")
+        stats[f"text_vs_{arm}_both_legal"] = paired_difference(rows, "text", arm)
         stats[f"net_{arm}"] = start_weighted_bootstrap([(r["start"], net(r, arm)) for r in rows])
         stats[f"net_text_minus_{arm}"] = start_weighted_bootstrap([(r["start"], net(r, "text") - net(r, arm)) for r in rows])
     results[mask_type] = stats
@@ -80,12 +84,13 @@ json.dump(dict(groups=results, seconds={a: statistics.mean(v) for a, v in second
 
 format_interval = lambda interval: "—" if not interval else (f"{100*interval['mean']:+.1f} [{100*interval['lo']:+.1f}, "
                                                               f"{100*interval['hi']:+.1f}] (n={interval['n']})")
-print("seconds per mask (LLM baseline, through the API):", {k: round(statistics.mean(v), 1) for k, v in seconds_by_arm.items()},
-      "cost USD:", {k: round(v, 4) for k, v in cost_by_arm.items()})
+print("seconds per mask (LLM baseline, through the API):",
+      {ARM_NAMES.get(k, k): round(statistics.mean(v), 1) for k, v in seconds_by_arm.items()},
+      "cost USD:", {ARM_NAMES.get(k, k): round(v, 4) for k, v in cost_by_arm.items()})
 columns = ["legal, text team writer", "legal, LLM baseline", "text team writer − original", "LLM baseline − original",
            "text team writer − LLM baseline, both legal", "net, text team writer", "net, LLM baseline",
            "net, text team writer − LLM baseline"]
-print("LLM baseline = its regulation-grounded prompt with a 16,384-token limit (" + BEST_ARM + ")")
+print(f"LLM baseline = its {ARM_NAMES[BEST_ARM]} ({BEST_ARM})")
 print(f"{'mask type':14s} " + " | ".join(columns))
 for mask_type, stats in results.items():
     cells = [f"{stats['legal']['text']}/{stats['n']}", f"{stats['legal'][BEST_ARM]}/{stats['n']}",
@@ -93,6 +98,7 @@ for mask_type, stats in results.items():
              format_interval(stats[f"text_vs_{BEST_ARM}_both_legal"]), format_interval(stats["net_text"]),
              format_interval(stats[f"net_{BEST_ARM}"]), format_interval(stats[f"net_text_minus_{BEST_ARM}"])]
     print(f"{mask_type:14s} " + " | ".join(cells))
-print("the LLM baseline's other prompt arms, all masks: legal", {k: results["all"]["legal"][k] for k in LING_ARMS},
-      "| net", {arm: format_interval(results["all"][f"net_{arm}"]) for arm in LING_ARMS},
-      "| text team writer − arm, both legal", {arm: format_interval(results["all"][f"text_vs_{arm}_both_legal"]) for arm in LING_ARMS})
+print("the LLM baseline's three prompt arms, all masks: legal", {ARM_NAMES[k]: results["all"]["legal"][k] for k in LING_ARMS},
+      "| net", {ARM_NAMES[arm]: format_interval(results["all"][f"net_{arm}"]) for arm in LING_ARMS},
+      "| text team writer − arm, both legal",
+      {ARM_NAMES[arm]: format_interval(results["all"][f"text_vs_{arm}_both_legal"]) for arm in LING_ARMS})
