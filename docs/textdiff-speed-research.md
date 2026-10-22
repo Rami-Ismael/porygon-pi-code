@@ -3,7 +3,7 @@
 **Question.** Which published ideas could make the Fast-dLLM v2 1.5B LoRA fine-tune (`src/textdiff.py train`) train
 faster on the M4 Pro at the same loss: a smaller pretrained text diffusion model, a lighter optimizer than AdamW,
 Neural Magic-style sparsity, or a cheaper block-diffusion training row? The measured answers are in
-[textdiff-speed-round3.md](textdiff-speed-round3.md). This note holds what each source says.
+[round three of the speed work](textdiff-speed-round3.md). This note holds what each source says.
 
 **How it was read.** Haiku web-fetch agents (WebFetch only) read fixed pages, one narrow job each, and returned
 claims with short quotes and URLs; the main session chose the pages and checked the claims used below against them.
