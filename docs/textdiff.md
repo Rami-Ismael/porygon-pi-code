@@ -372,16 +372,18 @@ example instead of the complementary pair (+14%), and stacking the short prompt 
 
 ## Against the LLM baseline: the text writer and Ling on the same 270 masks (2026-10-21)
 
-The best-trained text model (`lora_r32/final`: Fast-dLLM v2 1.5B + LoRA, the full 2,000-step run, validation 0.667)
+The best-trained text writer (`lora_r32/final`: Fast-dLLM v2 1.5B + LoRA, the full 2,000-step run, validation 0.667)
 against the Ling masked-completion baseline (`inclusionai/ling-3.0-flash-vl` through OpenRouter, reasoning off,
-temperature 0.7), from the Mask Lab run's existing panels: no new battles. Both arms filled the same 270 masks on the
-same five random legal starting teams, one attempt, no repair, and every legal fill battled the 49 distinct top-50
-meta teams once with the behaviour-cloning policy on both sides. Ling's best prompt is `regmb@16384` (the
-regulation-grounded prompt, 16,384 output tokens). Statistics as in `mask_lab_textdiff.py report`: percentage points
-of win rate, paired on the same mask, each starting team weighted equally, 95% bootstrap over the five starting teams.
-"Net" keeps the original team when a fill is rejected, so it is the comparison that counts illegal answers.
+temperature 0.7), from the Mask Lab run's stored battle results: no new battles. Both filled the same 270 masks on the
+same five random legal starting teams, one attempt each, no repair. A fill is **legal** when the completed team keeps
+every unmasked field and passes Showdown's Regulation M-B validator; each legal fill battled the 49 distinct top-50
+meta teams once, with the behaviour-cloning policy on both sides. Ling ran three prompt arms. Its best, used in every
+column below, is the regulation-grounded prompt with a 16,384-token output limit (`regmb@16384`). Statistics as in
+`mask_lab_textdiff.py report`: percentage points of win rate, paired on the same mask, each starting team weighted
+equally, 95% bootstrap over the five starting teams. **Net** keeps the original team when a fill is rejected, so it is
+the comparison that counts illegal answers.
 
-| family | legal, text | legal, Ling | text − original | Ling − original | text − Ling, both legal | net, text | net, Ling | **net, text − Ling** |
+| mask type | legal, text writer | legal, Ling | text writer − original | Ling − original | text writer − Ling where both are legal (masks) | net, text writer | net, Ling | **net, text writer − Ling** |
 |---|---:|---:|---|---|---|---|---|---|
 | Stat Points | 30/30 | 25/30 | −1.3 [−3.8, +0.9] | −1.3 [−3.7, +1.0] | +0.0 [−0.5, +0.7] (25) | −1.3 | −1.0 | −0.3 [−1.0, +0.2] |
 | items | 28/30 | 26/30 | −0.9 [−3.3, +1.5] | +0.0 [−2.5, +3.1] | −1.5 [−2.6, −0.7] (24) | −1.1 | −0.0 | **−1.1 [−1.6, −0.6]** |
@@ -391,25 +393,26 @@ of win rate, paired on the same mask, each starting team weighted equally, 95% b
 | natures | 30/30 | 26/30 | −1.3 [−3.3, +0.7] | −1.6 [−4.4, +1.6] | +0.4 [−1.1, +2.0] (26) | −1.3 | −1.4 | +0.1 [−1.2, +1.5] |
 | **all** | **149/270 (55%)** | **149/270 (55%)** | +2.9 [+0.9, +4.9] | +2.4 [−0.6, +4.5] | −0.3 [−1.2, +0.7] (107) | +1.6 [+0.5, +2.7] | +1.3 [−0.2, +2.5] | **+0.3 [−0.3, +0.9]** |
 
-Ling's other prompt arms are weaker: `baseline@16384` 113/270 legal, net +0.4 [−1.0, +1.8]; `baseline@4096` 87/270,
-net −0.3 [−1.3, +0.5]. Cost: the text writer runs locally, 16 s per mask on the M4 Pro (73 min for the grid); Ling took
-22 s per mask through the API and $0.28 for the grid (`regmb@16384`). Script: `scripts/text_vs_ling.py`
-(writes `text_vs_ling.json` into the run folder); it reproduces the text-writer columns of the Mask Lab table above exactly.
+Ling's other two arms use the same prompt without the regulation reference, at a 16,384-token limit
+(`baseline@16384`) and at a 4,096-token limit (`baseline@4096`). Both are weaker: 113 and 87 of 270 legal, net +0.4
+[−1.0, +1.8] and −0.3 [−1.3, +0.5]. Cost: the text writer runs locally, 16 s per mask on the M4 Pro (73 min for the
+grid); Ling took 22 s per mask through the API and $0.28 for the grid. Script: `scripts/text_vs_ling.py` (writes
+`text_vs_ling.json` into the run folder). Its text-writer columns are identical to the stored output of
+`mask_lab_textdiff.py report`, and every cell above matches the script's output (both checked by code, 2026-10-21).
 
 **Reading.**
-- **Overall the two are level.** Same legality (149/270 each), no difference in strength where both are legal
+- **Overall the two are level.** Same legality (149 of 270 each), no difference in strength where both are legal
   (−0.3 pp over 107 masks), and a net gain per mask of +1.6 for the text writer against +1.3 for Ling: +0.3 pp
-  [−0.3, +0.9], interval through zero.
-- **They fail on different fields.** The text writer loses moves (13/120 legal: no learnset table); Ling loses whole
-  Pokémon (16/30), abilities (15/30) and some Stat Points.
-- **Whole Pokémon is the one real difference: +6.5 pp [+1.7, +9.9] net for the text writer**, and it comes from
-  legality (25 vs 16 legal fills), not from stronger fills (+0.4 pp where both are legal).
-- On items and abilities Ling's net is about 1 pp better, because the text writer's extra legal fills there are
-  slightly weaker than the originals they replace.
+  [−0.3, +0.9], an interval through zero.
+- **They fail on different fields.** The text writer loses moves (13 of 120 legal; it has no learnset table). Ling
+  loses whole Pokémon (16 of 30), abilities (15 of 30) and some Stat Points.
+- **Whole Pokémon is the largest difference and the only one in the text writer's favour: +6.5 pp [+1.7, +9.9]
+  net.** It comes from legality (25 against 16 legal fills), not from stronger fills (+0.4 pp where both are legal).
+- **Items and abilities favour Ling by about 1 pp net**, both intervals clear of zero (−1.1 [−1.6, −0.6] and
+  −0.8 [−1.3, −0.3]): the text writer's extra legal fills there are slightly weaker than the originals they replace.
 - Five starting teams make these intervals exploratory, as in the Mask Lab table.
 
-**Published.** The adapter (`lora_r32/final`, 148 MB) and a model card with these results are public at
+**Published.** The adapter (`lora_r32/final`, 147.8 MB) and a model card with these results are public at
 [Rami/fast-dllm-v2-1.5b-vgc-regmb-lora](https://huggingface.co/Rami/fast-dllm-v2-1.5b-vgc-regmb-lora) (commit
 `336362f`, 2026-10-21). The hub copy's SHA-256 matches the local file, and loading it by hub id with plain
 transformers + peft writes a team on the M4 Pro in 11 s.
-
