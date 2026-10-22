@@ -25,23 +25,28 @@ from encode import NF
 TAG = f"test_team_writer_{os.getpid()}"
 
 
+def corpus_fixture(writer, n=96):
+    """n encodable corpus teams, a label for each, and a half-masked batch (inputs, t, labels) to score."""
+    rows = []
+    for team in writer.corpus:
+        try: rows.append(writer.V.encode(team))
+        except ValueError: continue
+        if len(rows) == n: break
+    rows = np.stack(rows)
+    labels = np.random.default_rng(0).uniform(0.3, 0.7, len(rows)).astype(np.float32)
+    g = torch.Generator().manual_seed(1)
+    x = torch.as_tensor(rows, device=L.DEV)
+    batch = (x.masked_fill((torch.rand(x.shape, generator=g) < 0.5).to(L.DEV), 0),
+             torch.full((len(x),), 0.5, device=L.DEV), torch.as_tensor(labels, device=L.DEV))
+    return rows, labels, batch
+
+
 class TeamWriterTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.gen = FD.Gen("v3")
         cls.writer = TeamWriter.load()
-        rows = []
-        for team in cls.writer.corpus:
-            try: rows.append(cls.writer.V.encode(team))
-            except ValueError: continue
-            if len(rows) == 96: break
-        cls.rows = np.stack(rows)
-        cls.labels = np.random.default_rng(0).uniform(0.3, 0.7, len(rows)).astype(np.float32)
-        g = torch.Generator().manual_seed(1)
-        x = torch.as_tensor(cls.rows, device=L.DEV)
-        cls.xin = x.masked_fill((torch.rand(x.shape, generator=g) < 0.5).to(L.DEV), 0)
-        cls.t = torch.full((len(x),), 0.5, device=L.DEV)
-        cls.w = torch.as_tensor(cls.labels, device=L.DEV)
+        cls.rows, cls.labels, (cls.xin, cls.t, cls.w) = corpus_fixture(cls.writer)
         cls.tmp = tempfile.TemporaryDirectory()
 
     @classmethod
@@ -60,7 +65,7 @@ class TeamWriterTests(unittest.TestCase):
 
     def assert_within_old_spread(self, new, old_twice):
         spread = self.gap(*old_twice)
-        self.assertLessEqual(self.gap(new, old_twice[0]), max(3 * spread, 1e-4), f"old code's own spread {spread:.2e}")
+        self.assertLessEqual(self.gap(new, old_twice[0]), max(3 * spread, 1e-4), f"run-to-run spread of the replaced fine-tune: {spread:.2e}")
 
     def test_logprobs_match_gen(self):
         self.assert_same_logprobs(self.writer.logprobs, self.gen.f)
@@ -152,17 +157,7 @@ class TeamWriterSpec(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.writer = TeamWriter.load()
-        rows = []
-        for team in cls.writer.corpus:
-            try: rows.append(cls.writer.V.encode(team))
-            except ValueError: continue
-            if len(rows) == 96: break
-        cls.rows = np.stack(rows)
-        cls.labels = np.random.default_rng(0).uniform(0.3, 0.7, len(rows)).astype(np.float32)
-        g = torch.Generator().manual_seed(1)
-        x = torch.as_tensor(cls.rows, device=L.DEV)
-        cls.batch = (x.masked_fill((torch.rand(x.shape, generator=g) < 0.5).to(L.DEV), 0),
-                     torch.full((len(x),), 0.5, device=L.DEV), torch.as_tensor(cls.labels, device=L.DEV))
+        cls.rows, cls.labels, cls.batch = corpus_fixture(cls.writer)
         cls.tmp = tempfile.TemporaryDirectory(); cls.dir = Path(cls.tmp.name)
 
     @classmethod

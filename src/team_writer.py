@@ -1,18 +1,19 @@
-"""The scratch team writer: the deployed Reg M-B diffusion model behind one interface.
+"""The scratch team writer: the deployed Regulation M-B diffusion model behind one interface.
 
     w = TeamWriter.load()                           # the loop-teams model + the battle-records model
     rows = w.sample(64, ask=0.5, guidance=2.0)      # [64, 48] token ids, legal by construction
     text, slots = w.to_paste(rows[0], rng)
     w2 = w.fine_tuned(rows, labels, epochs=40)      # a new writer; w is unchanged
 
-Everything a caller used to rebuild from lossdown lives here: which member checkpoints, the legality
-tables from the checkpoint's regulation snapshot, the two-member mixture, the matchup-row padding of the
-battle-records model, the sampler (fixed unmasking order, ask and guidance, temperature, top-p,
-surrogate tilt, species guidance, CADS) and fine-tuning. A fine-tuned writer is cached under a key that
+Everything a caller used to rebuild from the loss-down training module (lossdown.py) lives here: which
+member checkpoints, the legality tables from the checkpoint's regulation snapshot, the two-member mixture,
+the matchup-row padding of the battle-records model, the sampler (fixed unmasking order, ask and guidance,
+temperature, top-p, surrogate tilt, species guidance, condition-annealed sampling) and fine-tuning. A fine-tuned writer is cached under a key that
 hashes every setting that changes its weights, so changing the budget can never reload a stale copy.
 
-Sampling and fine-tuning reproduce foundation.Gen("v3"), cem_v3.members and cem_dbbo.members exactly
-(scripts/test_team_writer.py). Finished experiments keep calling lossdown directly.
+It reproduces the foundation-swap sampler (foundation.Gen("v3")) and the cross-entropy loops' fine-tunes
+(cem_v3.members, cem_dbbo.members), except that it never samples a Pokémon with no moves, which Showdown
+rejects (scripts/test_team_writer.py). Finished experiments keep calling lossdown directly.
 """
 import copy, hashlib, json
 from pathlib import Path
@@ -34,6 +35,8 @@ CACHE = L.CK / "team_writer"
 V3DIR = Path.home() / ".local/share/vgc-pilot-runtime/regmb-v3"
 SPECIES_COLS = [c for c in range(L.COLS) if c % NF == 0]
 NAN = float("nan")
+FIRST_MOVE = 3                  # field offset of a slot's first move column (species, ability, item, moves, nature)
+MATRIX_COLUMNS = 49             # the battle-records model's matchup row: one column per other top-50 meta team
 
 
 def _digest(obj):
@@ -88,7 +91,9 @@ class TeamWriter:
         stored sorted with the empty move last, so a slot's first move column may not be empty: Showdown
         rejects a Pokémon with no moves, which the shared tables allow."""
         k = L.KEY_OF_COL[c]; o = self.tables.allowed(x)[k][:, L.COLS_BY_KEY[k].index(c)].clone()
-        if c % NF == 3 and self.tables.EMV is not None: o[:, self.tables.EMV] = False
+        E = self.tables.EMV
+        if c % NF == FIRST_MOVE and E is not None:                    # only where a real move is still allowed
+            real = o.clone(); real[:, [0, E]] = False; o[real.any(1), E] = False
         o[~o.any(1)] = True; o[:, 0] = False
         return o
 
@@ -98,8 +103,9 @@ class TeamWriter:
                species_guidance=None, cads=None):
         """n teams in diffusion.ORDER. ask: the win-rate condition (None = unconditioned); guidance: the
         classifier-free weight against the unconditioned writer; species_guidance: that weight on the six
-        species columns only; surrogate/lam: add lam * surrogate.tilt to every column's logits; cads: noise
-        scale on the condition embedding, annealed over the steps (docs/guidance-timing-cads.md)."""
+        species columns only; surrogate/lam: add lam * surrogate.tilt to every column's logits; cads: the noise
+        scale of condition-annealed sampling (CADS), noise on the condition embedding annealed away over the
+        steps (docs/guidance-timing-cads.md)."""
         w = torch.full((n,), NAN if ask is None else ask, device=L.DEV); wn = torch.full((n,), NAN, device=L.DEV)
         x = torch.zeros(n, L.COLS, dtype=torch.long, device=L.DEV)
         try:
@@ -140,10 +146,13 @@ class TeamWriter:
     def fine_tuned(self, rows, labels, *, epochs=None, steps=None, batch=64, lr=1e-4, mix_original=False, seed=0,
                    cache_dir=CACHE):
         """A new writer: every member trained further from this writer's weights on (rows, labels).
-        epochs=E: E shuffled passes over the rows (the re-steer of cem_v3). steps=S: S batches drawn with
-        replacement; with mix_original=True half of each batch comes from the member's own training rows
-        (the Diffusion-BBO arm of cem_dbbo). AdamW, weight decay 0.01, gradients clipped at 1.
-        Cached under a hash of this writer and every argument above except cache_dir."""
+        Training starts from this writer's weights: fine-tune TeamWriter.load() for the original members, or
+        TeamWriter.load(start="dial_precise") for the precise-label ones.
+        epochs=E: E shuffled passes over the rows (the cross-entropy loop's re-steer, cem_v3). steps=S: S batches
+        drawn with replacement; with mix_original=True half of each batch comes from the member's own training
+        rows (the diffusion black-box-optimization arm, cem_dbbo). AdamW, weight decay 0.01, gradients clipped
+        at 1. Cached under a hash of this writer, every argument above except cache_dir, and, with
+        mix_original, the files the members' own rows are read from."""
         if (epochs is None) == (steps is None):
             raise ValueError("give exactly one of epochs or steps")
         if mix_original and steps is None:
@@ -152,6 +161,7 @@ class TeamWriter:
         recipe = dict(parent=self.key, rows=hashlib.sha256(rows.tobytes()).hexdigest(),
                       labels=hashlib.sha256(labels.tobytes()).hexdigest(), n=len(rows), epochs=epochs, steps=steps,
                       batch=batch, lr=lr, mix_original=bool(mix_original), seed=seed)
+        if mix_original: recipe["original_data"] = self._original_data_digest()
         key = _digest(recipe); cache_dir = Path(cache_dir); cache_dir.mkdir(parents=True, exist_ok=True)
         tables = self.tables; nets = []
         for name, parent, cfg in self._nets:
@@ -161,7 +171,7 @@ class TeamWriter:
                 nets.append((name, net, cfg)); continue
             torch.manual_seed(seed)
             xr = torch.as_tensor(rows, device=L.DEV); wr = torch.as_tensor(labels, device=L.DEV)
-            if cfg.get("mrow"): wr = torch.cat([wr[:, None], torch.full((len(wr), 49), NAN, device=L.DEV)], 1)
+            if cfg.get("mrow"): wr = torch.cat([wr[:, None], torch.full((len(wr), MATRIX_COLUMNS), NAN, device=L.DEV)], 1)
             sched = L.sched_tensor(cfg["sched"]).to(L.DEV); rules = tuple(cfg["rules"].split(","))
             opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=0.01)
             net.train()
@@ -187,6 +197,14 @@ class TeamWriter:
             nets.append((name, net, cfg))
         return TeamWriter(self._shared, nets, dict(self.provenance, fine_tune=recipe))
 
+    def _original_data_digest(self):
+        """sha256 of the three files the members' own training rows come from."""
+        if "original_digest" not in self._shared:
+            h = hashlib.sha256()
+            for f in (L.DATA, V3DIR / "remapped.npz", V3DIR / "synthetic.npy"): h.update(Path(f).read_bytes())
+            self._shared["original_digest"] = h.hexdigest()
+        return self._shared["original_digest"]
+
     def _original_rows(self, name, cfg):
         """The member's own training rows, rebuilt exactly as scripts/retrain_regmb.py chose them."""
         cache = self._shared["original_rows"]
@@ -197,7 +215,7 @@ class TeamWriter:
         if cfg.get("mrow"): idx = np.setdiff1d(idx, L.matrix_holdout(d))
         idx = idx[mapped["valid"][idx]]
         w = L.cond_matrix(d, idx) if cfg.get("mrow") else d["W"][idx]
-        sw = np.full((len(syn), 50) if cfg.get("mrow") else (len(syn),), np.nan, np.float32)
+        sw = np.full((len(syn), 1 + MATRIX_COLUMNS) if cfg.get("mrow") else (len(syn),), np.nan, np.float32)
         xx = np.concatenate([mapped["X"][idx], syn]); ww = np.concatenate([w, sw]).astype(np.float32)
         cache[name] = (torch.as_tensor(xx, device=L.DEV), torch.as_tensor(ww, device=L.DEV))
         return cache[name]
