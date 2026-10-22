@@ -113,13 +113,20 @@ for _k, _v in _dex.items():
 def parse_team(path):
     return parse_team_text(Path(path).read_text())
 
-def parse_team_text(text):
-    slots, cur = [], None
+def parse_team_text(text, blank_ends_slot=False):
+    """Slots of a Showdown paste. A slot starts at a line holding " @ " (species and item), or at an itemless
+    species line that opens the paste. blank_ends_slot=True also starts one at an itemless species line after
+    a blank line; without it such a Pokémon is lost. The default keeps how every finished experiment and the
+    corpus vocabulary were parsed (3 of 695 corpus teams change with it)."""
+    slots, cur, blank = [], None, False
     for line in text.splitlines():
         line = line.rstrip()
         if not line.strip():
+            blank = True
             continue
-        if " @ " in line or (cur is None and line and not line.startswith("-") and ":" not in line):
+        after_blank, blank = blank, False
+        if " @ " in line or ((cur is None or (blank_ends_slot and after_blank)) and line
+                             and not line.startswith("-") and ":" not in line):
             if cur: slots.append(cur)
             if " @ " in line:
                 spec, item = line.split(" @ ", 1)
