@@ -1,0 +1,7 @@
+# Runs Ruff on staged Python files before each commit; rules live in pyproject.toml.
+# Install once per clone: pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.1
+    hooks:
+      - id: ruff-check
