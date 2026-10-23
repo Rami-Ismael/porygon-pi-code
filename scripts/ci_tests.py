@@ -26,6 +26,7 @@ NEEDS_LOCAL = {
     "test_matchup_db": "the matchup matrix database in ~/vgc-data",
     "test_pair_disconnect": "poke_env, the battle client",
     "test_dspy_structure": "blog/mask-lab/data.json from the monorepo",
+    "test_meta_win_rate": "the VGCPastes pool in /tmp/vgc-pilot/vgc-bench and results/heldout_next50_evs.json",
 }
 
 
