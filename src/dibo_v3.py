@@ -233,12 +233,12 @@ class Runtime:
         return records
 
     @torch.no_grad()
-    def refine(self, records, prior, ensemble, seen=()):
+    def refine(self, records, prior, ensemble, seen=(), *, rng):
         """Discrete coordinate ascent on log prior + β UCB; only legal improvements."""
         current = list(records)
         excluded = set(seen)
         for _ in range(self.cfg["local_steps"]):
-            columns = np.random.randint(L.COLS, size=len(current))
+            columns = rng.integers(L.COLS, size=len(current))
             variants, owners = [], {}
             # Batch independent coordinates, rather than retaining a separate
             # 48-transition density call for each of hundreds of candidates.
@@ -274,7 +274,7 @@ class Runtime:
 
     def propose(self, prior, posterior, ensemble, generation, seen):
         torch.manual_seed(self.cfg["seed"] + generation * 1000 + 500)
-        np.random.seed(self.cfg["seed"] + generation * 1000 + 500)
+        rng = np.random.default_rng(self.cfg["seed"] + generation * 1000 + 500)
         records, keys, tried = [], set(seen), 0
         limit = self.cfg["propose"] * self.cfg["attempt_factor"]
         while len(records) < self.cfg["propose"] and tried < limit:
@@ -289,7 +289,7 @@ class Runtime:
                         break
         if len(records) < self.cfg["battle"]:
             raise RuntimeError(f"only {len(records)} new legal proposals after {tried} draws; need {self.cfg['battle']}")
-        records = self.refine(records, prior, ensemble, seen)
+        records = self.refine(records, prior, ensemble, seen, rng=rng)
         selected = DC.unique_top(records, self.cfg["battle"], seen)
         if len(selected) != self.cfg["battle"]:
             raise RuntimeError("local refinement collapsed below the distinct evaluation batch size")
