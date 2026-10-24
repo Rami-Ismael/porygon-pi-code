@@ -9,9 +9,8 @@ each of the 49 distinct top-50 teams, the behaviour-cloning policy on both sides
 and the 2026-10-15 fast evaluator (identity 4208bc07...). The vault scripts run unchanged; only their paths point
 here, and the project's own src/ modules are imported first so the stale /tmp/vgc-pilot/src copies are never used.
 
-Two text writers fill the masks: lora_r32/final (the adapter behind every earlier text-writer result) and
-lora_r32_s20261021/final, a fresh fine-tune for this run on the same 8,000 examples with the same recipe and a new
-seed. The scratch decoder is the clean pair (F1/G2 _noheldout_regmb_v3). Ling is not run: it needs
+The text writer is lora_r32/final, the adapter behind every earlier text-writer result. The scratch decoder is the
+clean pair (F1/G2 _noheldout_regmb_v3), team_writer.MEMBERS. Ling is not run: it needs
 OPENROUTER_API_KEY and paid calls.
 
 Held-out rule (docs/heldout-51-100.md): these teams are inputs here and nothing trains on them. `split` checks that
@@ -30,8 +29,8 @@ teams. docs/textdiff.md, "Held-out teams as the starting teams".
 import argparse, collections, importlib.util, json, random, subprocess, sys, time, uuid
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "src"))
+from repo_paths import ROOT as REPO  # also puts src/ first on sys.path
+import results
 PIPELINE = Path.home() / ("Documents/yakumsi-vault/Personal Project/Using Advance method search in the whole search of "
                           "possible vgc pokemon format to find the right counter to a pokemon team/team_completion_pipeline")
 RUN = PIPELINE / "runs/heldout-starters"               # tasks, candidates, panels, report (git-ignored)
@@ -42,8 +41,7 @@ RUNTIME = Path.home() / ".local/share/vgc-pilot-runtime"
 TOP50_EVIDENCE = PIPELINE / "runs/battle-evaluations/20261015-094649-077c67be"
 TOP50_IDENTITY = "4208bc07b46d240b23059d94b9fcdee5f00b6dea4525e1272f2284083f4906f8"
 BC_HASH, SEED, TASK_SEED, N_STARTERS = "57f5edcab415cf6c", 20261008, 22, 5
-MEMBERS = ["F1_final_medium_noheldout_regmb_v3", "G2_family_matrix_noprtrain_noheldout_regmb_v3"]
-ADAPTERS = {"textdiff": RUNTIME / "textdiff/lora_r32/final", "textdiff_s21": RUNTIME / "textdiff/lora_r32_s20261021/final"}
+ADAPTERS = {"textdiff": RUNTIME / "textdiff/lora_r32/final"}
 STATS = ["HP", "Atk", "Def", "SpA", "SpD", "Spe"]
 
 
@@ -129,6 +127,7 @@ def split(a):
     # refuses any other name. The separation tests check the guards; one of them also lists every checkpoint whose
     # file name lacks "noheldout", which later loop runs (dbbo_*, cem_scratch_*) trip without touching these members.
     import lossdown as L
+    from team_writer import MEMBERS                  # the clean F1/G2 pair (#9)
     test = subprocess.run([sys.executable, "-W", "ignore", str(REPO / "scripts/test_heldout_separation.py")], cwd=REPO,
                           capture_output=True, text=True)
     failed = sorted({l.split(" (")[0][len("FAIL: "):] for l in (test.stdout + test.stderr).splitlines() if l.startswith(("FAIL: ", "ERROR: "))})
@@ -140,7 +139,7 @@ def split(a):
                               "separation_tests_failed": failed,
                               "checkpoints_without_noheldout_in_name": dict(n=len(unnamed), kinds=sorted({n.split("_")[0] + "_" + n.split("_")[1] for n in unnamed}))}
     out["modules"] = {m: sys.modules[m].__file__ for m in ("corpus", "heldout")}
-    (RUN / "split.json").write_text(json.dumps(out, indent=1) + "\n")
+    results.save(RUN / "split.json", out)
     print(json.dumps(out, indent=1))
     if (not all(v["is_heldout_team"] for v in out["starters"].values()) or out["text_writer_train"]["starting_teams"]
             or out["text_writer_val"]["starting_teams"] or out["text_writer_train"]["heldout_teams"]
@@ -152,24 +151,21 @@ def split(a):
 def diffusion(a):
     """The scratch decoder (clean F1 + G2 v3 pair) on the manifest, then its valid fills join candidates.json."""
     import asked_vs_got, corpus                       # noqa: F401  project modules first
-    D = vault("mask_lab_diffusion"); D.WORK = WORK / "diffusion"; D.MEMBERS = MEMBERS
+    from team_writer import MEMBERS                  # the clean F1/G2 pair (#9)
+    D = vault("mask_lab_diffusion"); D.WORK = WORK / "diffusion"; D.MEMBERS = list(MEMBERS)
     subprocess.run(["nice", "-n", "10", sys.executable, "diffusion_baseline_v3.py", "generate", "--baseline",
                     str(D.WORK / "baseline"), "--output", str(D.WORK / "out"), "--members", *MEMBERS],
                    cwd=REPO / "scripts", check=True)
     D.collect(argparse.Namespace())
 
 def llm_baseline_2026_10_15():
-    """llm_baseline as the Mask Lab's collect steps called it on 2026-10-15: runtime(), paste(), validate_shape() and
-    masked(). Merge #6 dropped runtime() and the others moved to team_masks (identical code); mask_lab_textdiff.collect
-    still imports them from llm_baseline, so this module stands in for it, with runtime() and paste() as they were."""
+    """llm_baseline as the vault's mask_lab_textdiff.collect still imports it: runtime(), paste(), validate_shape() and
+    masked(). #3 moved them to showdown_validator and team_masks, and #6 dropped runtime(): here it returns the two
+    modules, which already use the pinned checkout, and the others are the shared functions."""
     import types, hps_generate as h, matchup_db as db, team_masks
-    def runtime():
-        h.SHOWDOWN = Path.home() / ".local/share/vgc-pilot-runtime/validator-913da36"; db.SHOWDOWN = h.SHOWDOWN
-        return h, db
-    def paste(team, h):
-        return "\n\n".join(h.slot_to_text(dict(s, moves=[m for m in s["moves"] if m])) for s in team) + "\n"
+    from showdown_validator import paste
     shim = types.ModuleType("llm_baseline")
-    shim.runtime, shim.paste, shim.validate_shape, shim.masked = runtime, paste, team_masks.validate_shape, team_masks.masked
+    shim.runtime, shim.paste, shim.validate_shape, shim.masked = (lambda: (h, db)), paste, team_masks.validate_shape, team_masks.masked
     sys.modules["llm_baseline"] = shim
     return shim
 
@@ -202,6 +198,10 @@ def battle(a):
     runner_module = importlib.util.module_from_spec(spec); spec.loader.exec_module(runner_module)
     con = MDB.connect(a.database)
     cands = [c for c in json.loads((a.run_dir / "candidates.json").read_text())["candidates"] if c["paste"]]
+    from team_masks import known_nature
+    bad = sorted({c["label"] for c in cands for s in c.get("team") or [] if not known_nature(s.get("nature"))})
+    if bad:                                          # the battle runtime rejects these teams, and their battles hang
+        raise SystemExit(f"{len(bad)} candidates have a nature outside Showdown's 25; reject them in collect: {bad[:5]}")
     val = Validator()
     try:
         with con:
@@ -253,7 +253,7 @@ def battle(a):
         if s["coverage"] != len([x for x in cols if x != t]): incomplete.append(c["label"])
         out["panels"][c["label"]] = {"team_id": t, "score": s["score"], "coverage": s["coverage"], "battles": s["battles"],
                                      "se": s["se"], "heldout_team": t in held, "by_opponent": {str(o): list(v) for o, v in cells.items()}}
-    (a.run_dir / "panels.json").write_text(json.dumps(out, indent=1) + "\n")
+    results.save(a.run_dir / "panels.json", out)
     print(f"saved {sum(p.get('score') is not None for p in out['panels'].values())} scored panels; incomplete: {len(incomplete)}", flush=True)
     con.close()
     if incomplete: raise SystemExit(f"{len(incomplete)} panels lack a battle against each top-50 team")
@@ -261,8 +261,7 @@ def battle(a):
 
 # ---------------------------------------------------------------- report (any Python 3)
 def report(a):
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from mask_lab_heldout import cluster, fmt
+    from mask_lab_stats import cluster, fmt
     tasks = json.loads((RUN / "eval2.tasks.json").read_text())["tasks"]
     panels = json.loads((RUN / "panels.json").read_text())["panels"]
     kinds = [k for k in ADAPTERS if any(l.startswith(k + ":") for l in panels)]
@@ -285,11 +284,8 @@ def report(a):
         for k in kinds:
             o[f"{k}_vs_diffusion"] = both(rs, k, "diffusion")
             o[f"net_{k}_minus_diffusion"] = cluster([(r["start"], net(r, k) - net(r, "diffusion")) for r in rs])
-        if len(kinds) == 2:
-            o["new_vs_old_both_legal"] = both(rs, kinds[1], kinds[0])
-            o["net_new_minus_old"] = cluster([(r["start"], net(r, kinds[1]) - net(r, kinds[0])) for r in rs])
         out[family] = o
-    names = {"textdiff": "text writer (lora_r32)", "textdiff_s21": "text writer (fresh fine-tune)", "diffusion": "scratch decoder"}
+    names = {"textdiff": "text writer (lora_r32)", "diffusion": "scratch decoder"}
     originals = {t["source"] for t in tasks}
     print("## Held-out teams as starting teams: win rate vs the 49 distinct top-50 teams, one battle each, BC policy both sides\n")
     print("Originals:", ", ".join(f"{s} {score('orig:' + s):.3f}" for s in sorted(originals)), "\n")
@@ -302,15 +298,11 @@ def report(a):
             print(f"| {family} | {o['legal'][k]}/{o['n']} | {fmt(o[k + '_vs_original'])} | {fmt(o[k + '_vs_random'])} | "
                   f"{fmt(o['net_' + k])} |{extra}")
         print()
-    if len(kinds) == 2:
-        print("### fresh fine-tune − lora_r32\n\n| family | both legal | net per mask |\n|---|---|---|")
-        for family, o in out.items():
-            print(f"| {family} | {fmt(o['new_vs_old_both_legal'])} | {fmt(o['net_new_minus_old'])} |")
     rows = {k: json.loads((RUN / f"{k}_rows.json").read_text()) for k in kinds if (RUN / f"{k}_rows.json").exists()}
     errors = {k: collections.Counter((v["error"] or "")[:40].split(":")[0] for v in r.values() if not v["valid"]).most_common(4) for k, r in rows.items()}
     seconds = {k: round(sum(v["seconds"] for v in r.values()) / len(r), 1) for k, r in rows.items()}
     print("\nrejections:", errors, "| seconds per mask:", seconds)
-    (RUN / "report.json").write_text(json.dumps(dict(groups=out, kinds=kinds, rejections=errors, seconds=seconds), indent=1) + "\n")
+    results.save(RUN / "report.json", dict(groups=out, kinds=kinds, rejections=errors, seconds=seconds))
     print(f"wrote {RUN / 'report.json'}")
 
 

@@ -16,10 +16,13 @@ matchup_db.evaluate_final, the held-out set's permitted use, into a database of 
     python3 scripts/mask_lab_heldout.py report                                     # RUN/heldout_report.json
     python3 scripts/mask_lab_heldout.py report --panels panels.json                # the same tables on the top-50
 """
-import argparse, importlib.util, json, random, sys, time, uuid
+import argparse, importlib.util, json, sys, time, uuid
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
+import repo_paths  # noqa: F401  puts src/ first on sys.path
+import results
+from mask_lab_stats import cluster, fmt
+
 PIPELINE = Path.home() / ("Documents/yakumsi-vault/Personal Project/Using Advance method search in the whole search of "
                           "possible vgc pokemon format to find the right counter to a pokemon team/team_completion_pipeline")
 RUN = PIPELINE / "runs/prompt-ab"
@@ -45,7 +48,6 @@ def load_runner():
     return module
 
 def battle(a):
-    sys.path.insert(0, str(REPO / "src"))
     import heldout as H, matchup_db as MDB
     from showdown_validator import Validator
     if MDB.sha256_file(MDB.POLICY_FILE) != BC_HASH:
@@ -98,7 +100,7 @@ def battle(a):
         if s["coverage"] != len(cols) or s["battles"] != len(cols): incomplete.append(c["label"])
         out["panels"][c["label"]] = {"team_id": t, "score": s["score"], "coverage": s["coverage"], "battles": s["battles"],
                                      "se": s["se"], "by_opponent": {str(o): list(v) for o, v in cells.items()}}
-    (a.run_dir / "panels_heldout.json").write_text(json.dumps(out, indent=1) + "\n")
+    results.save(a.run_dir / "panels_heldout.json", out)
     scored = sum(p.get("score") is not None for p in out["panels"].values())
     print(f"saved {scored} scored panels to {a.run_dir / 'panels_heldout.json'}; incomplete: {len(incomplete)}", flush=True)
     con.close()
@@ -107,18 +109,6 @@ def battle(a):
 
 
 # ---------------------------------------------------------------- report (any Python 3)
-def cluster(pairs):
-    """Equal-start-weighted mean of a paired difference, 95% bootstrap over the five starting teams
-    (as in mask_lab_textdiff.py report and scripts/text_vs_ling.py)."""
-    by = {}
-    for s, v in pairs: by.setdefault(s, []).append(v)
-    if not by: return None
-    means = [sum(v) / len(v) for v in by.values()]
-    rng = random.Random(SEED); draws = sorted(sum(rng.choice(means) for _ in means) / len(means) for _ in range(4000))
-    return dict(mean=sum(means) / len(means), lo=draws[100], hi=draws[-100], n=sum(len(v) for v in by.values()))
-
-fmt = lambda c: "—" if not c else f"{100*c['mean']:+.1f} [{100*c['lo']:+.1f}, {100*c['hi']:+.1f}]"
-
 def mask_rows(panels, tasks):
     score = lambda lab: (panels.get(lab) or {}).get("score")
     fam = {}
@@ -201,8 +191,8 @@ def report(a):
                 shifts[f"{family}: {name}"] = o
                 print(f"| {name} | {family} ({len(cells)}) | {fmt(o['top50'])} | {fmt(o['heldout'])} | {fmt(o['change'])} |")
     if a.panels == "panels_heldout.json":            # the top-50 tables are text_vs_ling.json's; print them only
-        (a.run_dir / "heldout_report.json").write_text(json.dumps(dict(panels=a.panels, opponents=len(target["opponents"]),
-            groups=groups, arm_means=means, heldout_minus_top50=gaps, comparison_shift=shifts), indent=1) + "\n")
+        results.save(a.run_dir / "heldout_report.json", dict(panels=a.panels, opponents=len(target["opponents"]),
+            groups=groups, arm_means=means, heldout_minus_top50=gaps, comparison_shift=shifts))
         print(f"\nwrote {a.run_dir / 'heldout_report.json'}")
 
 

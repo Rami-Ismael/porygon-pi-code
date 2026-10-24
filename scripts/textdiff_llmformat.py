@@ -25,8 +25,8 @@ Pokémon k = 1-6, moves k = 1-24). Ranks 51-100 are not in it (heldout.row_mask,
 import argparse, copy, json, random, statistics, sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "src")); sys.path.insert(1, str(REPO / "scripts"))
+from repo_paths import ROOT as REPO  # also puts src/ first on sys.path
+import results
 PIPELINE = Path.home() / ("Documents/yakumsi-vault/Personal Project/Using Advance method search in the whole search of "
                           "possible vgc pokemon format to find the right counter to a pokemon team/team_completion_pipeline")
 sys.path.insert(2, str(PIPELINE))
@@ -190,7 +190,7 @@ def prepare(a):
         vplan.append(dict(row=i, synthetic=None, source="val", team=team, mask=mask_for(team), opponents=list(range(len(meta))), label=w))
 
     OUT.mkdir(parents=True, exist_ok=True)
-    (OUT / "plan.json").write_text(json.dumps(dict(seed=SEED, meta=meta, train=plan, val=vplan)) + "\n")
+    results.save(OUT / "plan.json", dict(seed=SEED, meta=meta, train=plan, val=vplan))
     for version in VERSIONS:
         folder = OUT / version; folder.mkdir(exist_ok=True)
         system = system_text(version)
@@ -204,13 +204,12 @@ def prepare(a):
     summary = dict(train=len(plan), val=len(vplan), sources=count(plan, "source"), tasks=count([e["mask"] for e in plan], "task"),
                    labelled=sum(e["label"] is not None for e in plan), opponents_mean=statistics.mean(len(e["opponents"]) for e in plan),
                    heldout_rows=int((~keep[[e["row"] for e in plan + vplan if e["row"] is not None]]).sum()))
-    (OUT / "data.json").write_text(json.dumps(summary, indent=1) + "\n")
+    results.save(OUT / "data.json", summary)
     print(json.dumps(summary, indent=1))
 
 
 # ---------------------------------------------------------------- stats (venv-dlm: the model's tokenizer)
 def stats(a):
-    sys.path.insert(0, str(REPO / "src"))
     import textdiff_port as P, textdiff as T
     from transformers import AutoTokenizer
     tok = AutoTokenizer.from_pretrained(P.MODEL_ID, trust_remote_code=True)       # as textdiff_port.load
@@ -223,7 +222,7 @@ def stats(a):
         out[version] = dict(system=len(tok(rows[0]["system"], add_special_tokens=False).input_ids), example_mean=round(statistics.mean(lens)),
                             example_p95=q[int(0.95 * len(q))], example_max=q[-1], answer_mean=round(statistics.mean(ans)))
         print(version, out[version], flush=True)
-    (OUT / "tokens.json").write_text(json.dumps(out, indent=1) + "\n")
+    results.save(OUT / "tokens.json", out)
 
 
 # ---------------------------------------------------------------- fill the Mask Lab grids
@@ -245,8 +244,8 @@ def generate(a):                                      # venv-dlm
                                              add_generation_prompt=True, return_tensors="pt").to(P.DEV)
     tasks = json.loads((GRIDS[a.grid] / "eval2.tasks.json").read_text())["tasks"]
     dest = WORK / a.grid / (a.version + a.tag) / "raw"; dest.mkdir(parents=True, exist_ok=True)
-    (dest.parent / "generation-config.json").write_text(json.dumps(dict(adapter=str(adapter), version=a.version, ask=a.ask,
-        guidance=a.guidance, threshold=0.9, temperature=1.0, top_p=1.0, block_size=32, seed=GEN_SEED, opponents=len(lines)), indent=1))
+    results.save(dest.parent / "generation-config.json", dict(adapter=str(adapter), version=a.version, ask=a.ask,
+        guidance=a.guidance, threshold=0.9, temperature=1.0, top_p=1.0, block_size=32, seed=GEN_SEED, opponents=len(lines)))
     done = 0
     for i, t in enumerate(tasks):
         f = dest / f"{t['id']}.json"
@@ -257,11 +256,12 @@ def generate(a):                                      # venv-dlm
         mask = dict(task=t["task"], k=t["k"], slots=t["slots"])
         c, u = chat(user_text(a.version, team, mask, lines, a.ask)), chat(user_text(a.version, team, mask, lines, None))
         t0 = time.perf_counter()
-        out = P.generate_cfg(m, c, u, a.guidance, max_new_tokens=320 if a.version in MASK_LAB else 448,
+        # a whole team needs about 200 tokens; a fill list for 24 moves needs about 500, so 448 cut 18 of them (2026-10-24)
+        out = P.generate_cfg(m, c, u, a.guidance, max_new_tokens=320 if a.version in MASK_LAB else 1024,
                              threshold=0.9, temperature=1.0, top_p=1.0)
         new = out[0, c.shape[1]:]
-        f.write_text(json.dumps(dict(task=t["id"], family=t["task"], k=t["k"], text=tok.decode(new, skip_special_tokens=True),
-                                     stopped=bool((new == 151645).any()), prompt_tokens=int(c.shape[1]), seconds=time.perf_counter() - t0)))
+        results.save(f, dict(task=t["id"], family=t["task"], k=t["k"], text=tok.decode(new, skip_special_tokens=True),
+                             stopped=bool((new == 151645).any()), prompt_tokens=int(c.shape[1]), seconds=time.perf_counter() - t0))
         done += 1
         if done % 10 == 1: print(f"{done} {t['task']} k={t['k']} {time.perf_counter() - t0:.1f}s", flush=True)
 
@@ -315,19 +315,13 @@ def parse_answer(version, text, team, mask):
         if not all(isinstance(x, str) and x for x in [out[p[0]]["species"], *out[p[0]]["moves"]]): raise ValueError("an empty value")
     return out
 
-NATURES = set("hardy lonely brave adamant naughty bold docile relaxed impish lax timid hasty serious jolly naive modest mild "
-              "quiet bashful rash calm gentle sassy careful quirky".split())
-# The validator below accepted "Very Brave" (2026-10-24), but the battle runtime rejects any nature outside these 25 when
-# the challenge is sent, and every battle of that team hung. A trailing " Nature" is dropped by the battle client, as
-# "Bold Nature" showed, so it is allowed.
-
 def collect(a):                                       # /tmp/vgc-pilot/.venv
-    import numpy as np, asked_vs_got as X, hps_generate, corpus   # project modules before the vault code
-    from mask_lab_heldout_starters import llm_baseline_2026_10_15
-    B = llm_baseline_2026_10_15()                      # the helpers mask_lab_textdiff.collect uses, as they were
+    import numpy as np, asked_vs_got as X, hps_generate, corpus, matchup_db   # noqa: F401  project modules before the vault code
+    from showdown_validator import Validator, paste
+    from team_masks import validate_shape, known_nature
     import mask_lab_prepare as MP
     _, _, _, _, spreads = X.setup()
-    h, _ = B.runtime(); validator = h.Validator()
+    validator = Validator()
     run = GRIDS[a.grid]; tasks = json.loads((run / "eval2.tasks.json").read_text())["tasks"]
     raw = WORK / a.grid / (a.version + a.tag) / "raw"; kind = f"llm_{a.version}{a.tag}"
     rng = np.random.default_rng(GEN_SEED)
@@ -344,15 +338,14 @@ def collect(a):                                       # /tmp/vgc-pilot/.venv
                     g = json.loads(f.read_text()); seconds = g["seconds"]
                     done = parse_answer(a.version, g["text"], [{k: v for k, v in m.items() if k != "evs"} for m in team], mask)
                     team = [dict(d_, evs=m["evs"]) for d_, m in zip(done, team)]
-                    bad = [m["nature"] for m in team if isinstance(m["nature"], str) and m["nature"].strip()
-                           and m["nature"].lower().removesuffix(" nature").replace(" ", "") not in NATURES]
+                    bad = [m["nature"] for m in team if not known_nature(m["nature"])]
                     if bad: raise ValueError(f"invalid nature: {bad[0]}")
                 for s in sorted({i // 4 if t["task"] == "moves" else i for i in t["slots"]}):
                     if t["task"] in ("stats", "pokemon"):      # Stat Points: a same-species corpus spread, else a random legal one
                         pl = spreads.get(corpus.norm(team[s]["species"]))
                         team[s]["evs"] = dict(pl[int(rng.integers(len(pl)))]) if pl else hps_generate.sample_spread(rng)
-                B.validate_shape(team)
-                error = validator(B.paste(team, h))
+                validate_shape(team)
+                error = validator(paste(team, hps_generate))
             except (ValueError, KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
                 error = f"{type(exc).__name__}: {exc}"
             rows[t["id"]] = dict(valid=error is None, error=(error or "")[:160], seconds=seconds)
@@ -367,8 +360,8 @@ def collect(a):                                       # /tmp/vgc-pilot/.venv
     path = dest / "candidates.json"
     cands = json.loads(path.read_text())["candidates"] if path.exists() else []
     cands = [c for c in cands if c["kind"] != kind] + new
-    path.write_text(json.dumps({"candidates": cands}, indent=1) + "\n")
-    (dest / f"{kind}_rows.json").write_text(json.dumps(rows, indent=1) + "\n")
+    results.save(path, {"candidates": cands})
+    results.save(dest / f"{kind}_rows.json", rows)
     if a.grid == "random" and not (dest / "eval2.tasks.json").exists():
         (dest / "eval2.tasks.json").write_text((run / "eval2.tasks.json").read_text())
     legal = sum(r["valid"] for r in rows.values())
@@ -461,7 +454,7 @@ model = AutoModelForCausalLM.from_pretrained(base, revision=rev, trust_remote_co
 model = PeftModel.from_pretrained(model, "{repo}").merge_and_unload().eval()
 msgs = [{{"role": "system", "content": open("system.txt").read()}}, {{"role": "user", "content": user_message}}]
 ids = tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt")
-out = model.generate(ids, max_new_tokens={320 if v in MASK_LAB else 448}, threshold=0.9, block_size=32, small_block_size=8, temperature=1.0, top_p=1.0)
+out = model.generate(ids, max_new_tokens={320 if v in MASK_LAB else 1024}, threshold=0.9, block_size=32, small_block_size=8, temperature=1.0, top_p=1.0)
 print(tok.decode(out[0, ids.shape[1]:], skip_special_tokens=True))
 ```
 
@@ -519,7 +512,7 @@ def report(a):
     """Each LLM-format model against the original, random fill, scratch decoder, the first text writer and, on the random
     grid, Ling with the same prompt. Percentage points of win rate vs the 49 top-50 teams, paired on the mask, five
     starting teams weighted equally, 95% bootstrap over them (mask_lab_heldout.cluster)."""
-    from mask_lab_heldout import cluster, fmt
+    from mask_lab_stats import cluster, fmt
     tasks = json.loads((GRIDS[a.grid] / "eval2.tasks.json").read_text())["tasks"]
     panels = dict(json.loads((GRIDS[a.grid] / "panels.json").read_text())["panels"])
     if a.grid == "random":                             # the new arms' panels: same opponents, same battle identity
@@ -553,7 +546,7 @@ def report(a):
             out[v][family] = o
             print(f"| {family} | {o['legal']}/{o['n']} | {fmt(o['vs_original'])} | " + " | ".join(fmt(o[f'vs_{x}']) for x in refs)
                   + f" | {fmt(o['net'])} | {fmt(o['net_minus_text'])} |" + (f" {fmt(o['net_minus_ling'])} |" if 'net_minus_ling' in o else ""))
-    (WORK / f"report_{a.grid}.json").write_text(json.dumps(out, indent=1) + "\n")
+    results.save(WORK / f"report_{a.grid}.json", out)
     print(f"\nwrote {WORK / f'report_{a.grid}.json'}")
 
 

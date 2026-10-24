@@ -387,7 +387,7 @@ def smoke(args):
 
 def train(args):
     import torch, textdiff_port as P
-    seed = args.seed                                 # SEED unless --seed: a replicate fine-tune on the same examples
+    seed = args.seed                                 # SEED unless --seed
     torch.manual_seed(seed); random.seed(seed)
     P.SHIFT = not args.no_shift
     tok, m = P.load(base=args.base or None)
@@ -441,7 +441,7 @@ def train(args):
                              peak_gb=peak, opt_state_gb=optimizer_state_gb(opt))
                 log.append(entry); running = 0.0
                 print(json.dumps(entry), flush=True)
-            if step % args.empty_cache_every == 0:
+            if step % args.empty_cache_every == 0 or step == total:
                 torch.mps.empty_cache()          # micro-batches of many lengths fragment the Metal cache (17-18 GB by step 150)
             if step % args.eval_every == 0 or step == total or step == args.max_steps:
                 if args.speed_only:

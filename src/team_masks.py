@@ -37,6 +37,15 @@ def masked(team, paths):
     return result
 
 
+def known_nature(nature):
+    """True for an empty nature or one of Showdown's 25, after dropping a trailing " Nature" as the battle client does
+    ("Bold Nature" battles as Bold). The pinned validator accepted "Very Brave" (2026-10-24), but the battle runtime
+    rejects that team when the challenge is sent, so its battles never start."""
+    import corpus
+    name = (nature or "").strip()
+    return not name or name.lower().removesuffix(" nature").replace(" ", "") in {n.lower() for n in corpus.NATURES}
+
+
 def validate_shape(team):
     if not isinstance(team, list) or len(team) != 6:
         raise ValueError("team must have six slots")

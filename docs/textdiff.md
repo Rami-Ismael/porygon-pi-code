@@ -596,7 +596,7 @@ Every text team writer is Fast-dLLM v2 1.5B (Hugging Face `Efficient-Large-Model
 
 ### LLM-format prompts (`--data ~/.local/share/vgc-pilot-runtime/textdiff/llmformat/<version>`)
 
-Each training row carries its own system text (`system`), which `--prompt-style full` sends instead of the short prompt's. The rows come from `scripts/textdiff_llmformat.py prepare`, and each copies one of Ling's prompt versions with four changes: the meta teams are one line of six species per team; Stat Points are left out (masked ones are filled from a same-species corpus spread, as for `lora_r32`); a `target_win_rate` field is added; and the answer-format sentence asks for the version's answer shape in text. When filling masks (`textdiff_llmformat.py generate`) the user message lists all 49 top-50 teams and asks `"0.50"`, and guidance 2 compares it with the same message set to `"unknown"`.
+Each training row carries its own system text (`system`), which `--prompt-style full` sends instead of the short prompt's. The rows come from `scripts/textdiff_llmformat.py prepare`, and each copies one of Ling's prompt versions with five changes: the meta teams are one line of six species per team; Stat Points are left out (masked ones are filled from a same-species corpus spread, as for `lora_r32`); Ling's `task.seed`, `ivs` and `level` are left out too, though the `regmb` system text, copied verbatim, still says to copy ivs and level; a `target_win_rate` field is added; and the answer-format sentence asks for the version's answer shape in text. When filling masks (`textdiff_llmformat.py generate`) the user message lists all 49 top-50 teams and asks `"0.50"`, and guidance 2 compares it with the same message set to `"unknown"`.
 
 **`regmb`** (run `llm_regmb`)
 
@@ -853,10 +853,15 @@ format. Rows average 1,834 tokens and answers 174. Peak memory 15.7 GB at 18.7 s
 0.368, 0.274, 0.239, 0.207 at steps 500 to 2,000, the same final value as the `baseline` writer's.
 
 **Filling.** As for the other two: all 49 top-50 teams listed, target 0.50, guidance 2 against "unknown", threshold
-0.9. About 7 s per mask. One random-team fill wrote the nature "Very Brave". The validator accepted it, the battle
+0.9. About 7 s per mask. Answers stopped at 448 new tokens (320 for the whole-team prompts). A fill list for 22 to 24
+moves needs more, and 18 answers were cut off mid-JSON: 8 on the held-out teams and 10 on the random teams, all move
+masks with k = 22 to 24. The cap is now 1,024. Those 18 masks will be asked again, and until then the numbers below
+count them as illegal. One random-team fill wrote the nature "Very Brave". The validator accepted it, the battle
 runtime rejected the team, and every battle of that team hung until it timed out. `collect` now rejects a nature outside
 Showdown's 25 after dropping a trailing "Nature", as the battle client does. That fill is now illegal (78 legal fills
-became 77). No `regmb` or `baseline` result changes.
+became 77). No legal `regmb` or `baseline` fill has such a nature, so their legal counts stand. Their stored results
+predate the check: collecting them again would redraw some Stat Point spreads (26 of the `baseline` writer's
+random-team fills), because a rejection earlier in the grid shifts the spread sampler.
 
 | starting teams | legal | fill − original | − random fill | − scratch decoder | − first text writer | net per mask |
 |---|---:|---|---|---|---|---|
@@ -868,13 +873,14 @@ Measured as in the `regmb` table. Ling was not run with this prompt on these mas
 Legal fills by family, held-out / random: Stat Points 30/30, 30/30; items 20/30, 7/30; moves **8/120, 6/120**; whole
 Pokémon 15/30, 6/30; abilities 9/30, 3/30; natures 29/30, 25/30. Rejections, held-out / random, counted by the rule in
 the `baseline` section: a move the species cannot learn 67 / 107, a duplicated move 37 / 3, an illegal ability 19 / 28,
-an answer that is not valid fill-list JSON 18 / 22 (mostly an unterminated string), an unknown name 10 / 26, Item or
+an answer that is not valid fill-list JSON 18 / 22 (8 / 10 of them cut off by the 448-token cap), an unknown name 10 / 26, Item or
 Species Clause 8 / 6, an unmasked field changed 0 / 0, other 0 / 1.
 
 **Reading.**
 - **Answering with only the blanks did not raise legality.** No fill changed an unmasked field, against 22 and 39 for
-  the `regmb` writer, but broken JSON took their place. Legal fills: 111/270 and 77/270, against 105 and 85 for
-  `regmb` and 111 and 69 for `baseline`.
+  the `regmb` writer, but broken JSON took their place, 18 of it from the generation cap. Legal fills: 111/270 and
+  77/270, against 105 and 85 for `regmb` and 111 and 69 for `baseline`. Even if all 18 cut-off answers prove legal,
+  119 and 87 stay far below the first writer's 173 and 149.
 - Moves are the gap for all three: 8 to 11 of 120 move masks legal on the held-out teams, against 46 for the first text
   writer. Most failures are moves the species cannot learn.
 - **Where legal, the fills are level with the first writer on the held-out teams (+0.3) and 1.0 pp below it on the
@@ -889,6 +895,8 @@ Species Clause 8 / 6, an unmasked field changed 0 / 0, other 0 / 1.
 | Ling's `regmb` | 105/270 | 85/270 | −0.1 [−2.4, +2.6] | **−1.2 [−1.9, −0.6]** | −0.6 | +0.5 |
 | Ling's `baseline` | 111/270 | 69/270 | +0.6 [−0.8, +2.0] | −0.4 [−1.7, +0.5] | −0.3 | −0.2 |
 | Ling's `mb-original-v1` | 111/270 | 77/270 | +0.3 [−1.2, +1.6] | **−1.0 [−1.3, −0.5]** | −0.5 | +0.1 |
+
+The `mb-original-v1` counts treat the 18 cut-off answers as illegal until the re-run settles them.
 
 **Decision.** None of Ling's three prompts helps the text writer. Each loses a third to a half of the first writer's
 legal fills, and legal fills are level with the first writer's or about 1 pp weaker. Neither the regulation text
