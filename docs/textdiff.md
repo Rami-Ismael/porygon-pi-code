@@ -853,39 +853,40 @@ format. Rows average 1,834 tokens and answers 174. Peak memory 15.7 GB at 18.7 s
 0.368, 0.274, 0.239, 0.207 at steps 500 to 2,000, the same final value as the `baseline` writer's.
 
 **Filling.** As for the other two: all 49 top-50 teams listed, target 0.50, guidance 2 against "unknown", threshold
-0.9. About 7 s per mask. Answers stopped at 448 new tokens (320 for the whole-team prompts). A fill list for 22 to 24
-moves needs more, and 18 answers were cut off mid-JSON: 8 on the held-out teams and 10 on the random teams, all move
-masks with k = 22 to 24. The cap is now 1,024. Those 18 masks will be asked again, and until then the numbers below
-count them as illegal. One random-team fill wrote the nature "Very Brave". The validator accepted it, the battle
+0.9. About 7 s per mask. Answers first stopped at 448 new tokens (320 for the whole-team prompts). Eighteen fill lists
+for 22 to 24 moves reached that cap without the end token: 8 on the held-out teams and 10 on the random teams, 15 of
+them cut off mid-JSON. With the cap at 1,024, all 18 were asked again (2026-10-24, the same seeds) and all stopped:
+1 is legal, and 17 pick a move the species cannot learn. One random-team fill wrote the nature "Very Brave". The validator accepted it, the battle
 runtime rejected the team, and every battle of that team hung until it timed out. `collect` now rejects a nature outside
 Showdown's 25 after dropping a trailing "Nature", as the battle client does. That fill is now illegal (78 legal fills
 became 77). No legal `regmb` or `baseline` fill has such a nature, so their legal counts stand. Their stored results
 predate the check: collecting them again would redraw some Stat Point spreads (26 of the `baseline` writer's
-random-team fills), because a rejection earlier in the grid shifts the spread sampler.
+random-team fills), because a rejection earlier in the grid shifts the spread sampler. Collecting this writer's
+held-out grid again for the 18 masks applied the check there for the first time and redrew the spreads of 19 legal
+fills, so 20 teams were battled again; the numbers below include them.
 
 | starting teams | legal | fill − original | − random fill | − scratch decoder | − first text writer | net per mask |
 |---|---:|---|---|---|---|---|
-| held-out (ranks 51–100) | 111/270 | −1.8 [−4.7, +2.0] | +5.4 [+3.4, +7.3] | +1.0 [+0.0, +1.7] | +0.3 [−1.2, +1.6] | −0.5 [−1.7, +1.2] |
+| held-out (ranks 51–100) | 112/270 | −1.9 [−5.9, +3.0] | +5.6 [+3.6, +7.5] | +1.0 [−0.9, +2.6] | +0.3 [−0.8, +1.1] | −0.4 [−2.2, +1.9] |
 | random | 77/270 | +0.2 [−1.9, +2.4] | +1.4 [−0.0, +2.7] | +0.6 [−0.2, +1.6] | **−1.0 [−1.3, −0.5]** | +0.1 [−0.6, +0.7] |
 
 Measured as in the `regmb` table. Ling was not run with this prompt on these masks, so there is no same-prompt column.
 
-Legal fills by family, held-out / random: Stat Points 30/30, 30/30; items 20/30, 7/30; moves **8/120, 6/120**; whole
+Legal fills by family, held-out / random: Stat Points 30/30, 30/30; items 20/30, 7/30; moves **9/120, 6/120**; whole
 Pokémon 15/30, 6/30; abilities 9/30, 3/30; natures 29/30, 25/30. Rejections, held-out / random, counted by the rule in
-the `baseline` section: a move the species cannot learn 67 / 107, a duplicated move 37 / 3, an illegal ability 19 / 28,
-an answer that is not valid fill-list JSON 18 / 22 (8 / 10 of them cut off by the 448-token cap), an unknown name 10 / 26, Item or
-Species Clause 8 / 6, an unmasked field changed 0 / 0, other 0 / 1.
+the `baseline` section: a move the species cannot learn 73 / 115, a duplicated move 37 / 3, an illegal ability 19 / 28,
+an answer that is not valid fill-list JSON 11 / 14, an unknown name 10 / 26, Item or Species Clause 8 / 6, an unmasked
+field changed 0 / 0, other 0 / 1.
 
 **Reading.**
 - **Answering with only the blanks did not raise legality.** No fill changed an unmasked field, against 22 and 39 for
-  the `regmb` writer, but broken JSON took their place, 18 of it from the generation cap. Legal fills: 111/270 and
-  77/270, against 105 and 85 for `regmb` and 111 and 69 for `baseline`. Even if all 18 cut-off answers prove legal,
-  119 and 87 stay far below the first writer's 173 and 149.
+  the `regmb` writer, but broken JSON took their place. Legal fills: 112/270 and 77/270, against 105 and 85 for
+  `regmb` and 111 and 69 for `baseline`. Given room to finish, the 18 long fill lists added one legal fill.
 - Moves are the gap for all three: 8 to 11 of 120 move masks legal on the held-out teams, against 46 for the first text
   writer. Most failures are moves the species cannot learn.
 - **Where legal, the fills are level with the first writer on the held-out teams (+0.3) and 1.0 pp below it on the
   random teams**, close to the `regmb` writer's −1.2.
-- Net per mask is level with the original on both grids (−0.5, +0.1).
+- Net per mask is level with the original on both grids (−0.4, +0.1).
 
 **All three Ling-prompt writers against the first text writer.**
 
@@ -894,9 +895,7 @@ Species Clause 8 / 6, an unmasked field changed 0 / 0, other 0 / 1.
 | first text writer, short prompt | 173/270 | 149/270 | — | — | −1.9 | +1.6 |
 | Ling's `regmb` | 105/270 | 85/270 | −0.1 [−2.4, +2.6] | **−1.2 [−1.9, −0.6]** | −0.6 | +0.5 |
 | Ling's `baseline` | 111/270 | 69/270 | +0.6 [−0.8, +2.0] | −0.4 [−1.7, +0.5] | −0.3 | −0.2 |
-| Ling's `mb-original-v1` | 111/270 | 77/270 | +0.3 [−1.2, +1.6] | **−1.0 [−1.3, −0.5]** | −0.5 | +0.1 |
-
-The `mb-original-v1` counts treat the 18 cut-off answers as illegal until the re-run settles them.
+| Ling's `mb-original-v1` | 112/270 | 77/270 | +0.3 [−0.8, +1.1] | **−1.0 [−1.3, −0.5]** | −0.4 | +0.1 |
 
 **Decision.** None of Ling's three prompts helps the text writer. Each loses a third to a half of the first writer's
 legal fills, and legal fills are level with the first writer's or about 1 pp weaker. Neither the regulation text
@@ -907,4 +906,6 @@ stays the text writer's format for filling masks.
 
 **Limits.** One training seed per writer, five starting teams per grid, one fill per mask, one battle per opponent. The
 three LLM-format writers train on the same teams, masks and labels and differ in system text, request and answer. Their
-rows differ from the first writer's, so each comparison with the first writer is prompt and data together.
+rows differ from the first writer's, so each comparison with the first writer is prompt and data together. The Stat
+Point spreads come from one sampler shared across a grid, so a change in which fills are rejected redraws the later
+spreads; seeding the sampler per mask would make each fill's spread independent.
