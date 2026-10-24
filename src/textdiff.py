@@ -96,11 +96,12 @@ def short_prompt(prompt):
     return "Win rate " + prompt.rsplit(": ", 1)[1]
 
 
-def encode_example(tok, prompt, answer, bd=32, style="full"):
+def encode_example(tok, prompt, answer, bd=32, style="full", system=None):
+    """system: the example's own system text (the LLM-format rows of scripts/textdiff_llmformat.py); default SYSTEM."""
     if style == "short":
         msgs = [{"role": "user", "content": short_prompt(prompt)}]
     else:
-        msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
+        msgs = [{"role": "system", "content": system or SYSTEM}, {"role": "user", "content": prompt}]
     p = tok.apply_chat_template(msgs, add_generation_prompt=True, tokenize=True)
     a = tok(answer, add_special_tokens=False).input_ids + [tok.eos_token_id]       # <|im_end|> = 151645
     ids = p + a
@@ -338,7 +339,7 @@ def batches(rows, tok, bs, bd, rng, max_len, style="full"):
     order = list(range(len(rows))); rng.shuffle(order)
     enc = []
     for i in order:
-        ids, lab = encode_example(tok, rows[i]["prompt"], rows[i]["answer"], bd, style)
+        ids, lab = encode_example(tok, rows[i]["prompt"], rows[i]["answer"], bd, style, rows[i].get("system"))
         if len(ids) > max_len: continue
         enc.append((ids, lab))
         if len(enc) == bs:
@@ -386,16 +387,18 @@ def smoke(args):
 
 def train(args):
     import torch, textdiff_port as P
-    torch.manual_seed(SEED); random.seed(SEED)
+    seed = args.seed                                 # SEED unless --seed: a replicate fine-tune on the same examples
+    torch.manual_seed(seed); random.seed(seed)
     P.SHIFT = not args.no_shift
     tok, m = P.load(base=args.base or None)
     if args.base and P.qwen3_folder(args.base):
         assert args.layout != "released", "a Qwen3 base trains only through the functional layouts (--layout trim)"
         args.functional_val = True
-    rows = load_jsonl(OUT / "train.jsonl"); val = load_jsonl(OUT / "val.jsonl")[:args.nval]
+    data = Path(args.data) if args.data else OUT     # --data: a folder with its own train.jsonl / val.jsonl
+    rows = load_jsonl(data / "train.jsonl"); val = load_jsonl(data / "val.jsonl")[:args.nval]
     if args.limit:                                   # every real-corpus row, then the shuffled rest up to the limit
         real = [r for r in rows if r["source"] == "real"]; rest = [r for r in rows if r["source"] != "real"]
-        rows = real + rest[:max(0, args.limit - len(real))]; random.Random(SEED).shuffle(rows)
+        rows = real + rest[:max(0, args.limit - len(real))]; random.Random(seed).shuffle(rows)
     print(f"training on {len(rows)} examples: {dict(__import__('collections').Counter(r['source'] for r in rows))}", flush=True)
     new_ids = add_domain_tokens(tok, m) if args.domain_tokens else None
     if args.base and not args.base_knows_mask: new_ids = sorted(set(new_ids or []) | {P.MASK_ID})   # a plain Qwen2.5 checkpoint must learn [MASK]
@@ -410,16 +413,16 @@ def train(args):
     steps_per_epoch = math.ceil(len(rows) / args.batch); total = steps_per_epoch * args.epochs
     warm = max(1, int(0.03 * total))
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / warm) * max(0.05, 1 - max(0, s - warm) / max(1, total - warm)))
-    g = torch.Generator(device=P.DEV).manual_seed(SEED); rng = random.Random(SEED)
+    g = torch.Generator(device=P.DEV).manual_seed(seed); rng = random.Random(seed)
     ck = OUT / args.name; ck.mkdir(parents=True, exist_ok=True)
     if args.domain_tokens: tok.save_pretrained(ck / "tokenizer")       # gen must tokenise with the same vocabulary
     log = []; t0 = time.perf_counter(); step = 0; running = 0.0; tokens = 0; peak = 0.0
     for epoch in range(args.epochs):
-        for ids, lab in batches(rows, tok, args.batch, 32, rng, 2048, args.prompt_style):
+        for ids, lab in batches(rows, tok, args.batch, 32, rng, args.max_len, args.prompt_style):
             if args.max_steps and step >= args.max_steps: break
             ids, lab = ids.to(P.DEV), lab.to(P.DEV)
             if args.optimizer == "mezo":
-                opt.zero_grad(set_to_none=True); lv = mezo_step(m, ids, lab, g, args, fwd, params, SEED + step)
+                opt.zero_grad(set_to_none=True); lv = mezo_step(m, ids, lab, g, args, fwd, params, seed + step)
             elif fwd is None:
                 loss = P.diffusion_loss(m, ids, lab, generator=g, shared_clean=not args.legacy_layout,
                                         complementary=not args.no_complementary)
@@ -438,11 +441,12 @@ def train(args):
                              peak_gb=peak, opt_state_gb=optimizer_state_gb(opt))
                 log.append(entry); running = 0.0
                 print(json.dumps(entry), flush=True)
+            if step % args.empty_cache_every == 0:
                 torch.mps.empty_cache()          # micro-batches of many lengths fragment the Metal cache (17-18 GB by step 150)
             if step % args.eval_every == 0 or step == total or step == args.max_steps:
                 if args.speed_only:
                     (ck / "log.json").write_text(json.dumps(dict(args=vars(args), log=log), indent=1)); continue
-                v, na = validate(m, tok, val, g, shared=not args.legacy_layout, style=args.prompt_style, fwd=fwd,
+                v, na = validate(m, tok, val, g, bs=args.val_batch, shared=not args.legacy_layout, style=args.prompt_style, fwd=fwd, max_len=args.max_len,
                                  decoder_layers=args.decoder_layers, functional=args.functional_val)
                 log.append(dict(step=step, val=v, answer_tokens=na, seconds_per_step=(time.perf_counter() - t0) / step)); print(json.dumps(log[-1]), flush=True)
                 m.save_pretrained(ck / f"step{step}")
@@ -451,7 +455,7 @@ def train(args):
     (ck / "log.json").write_text(json.dumps(dict(args=vars(args), log=log, minutes=(time.perf_counter() - t0) / 60), indent=1))
 
 
-def validate(m, tok, val, g, bs=8, shared=True, style="full", fwd=None, decoder_layers=0, functional=False):
+def validate(m, tok, val, g, bs=8, shared=True, style="full", fwd=None, decoder_layers=0, functional=False, max_len=2048):
     """The published loss (complementary pairs) on the held-out rows: the same function for every arm.
     Returns (mean loss per masked answer token, mean answer tokens per row): with a different vocabulary the
     per-token number changes meaning, their product is the comparable per-team figure. decoder_layers > 0: the
@@ -460,7 +464,7 @@ def validate(m, tok, val, g, bs=8, shared=True, style="full", fwd=None, decoder_
     tot, n, na = 0.0, 0, 0
     gv = torch.Generator(device=P.DEV).manual_seed(1)
     with torch.no_grad():
-        for ids, lab in batches(val, tok, bs, 32, random.Random(1), 2048, style):
+        for ids, lab in batches(val, tok, bs, 32, random.Random(1), max_len, style):
             ids, lab = ids.to(P.DEV), lab.to(P.DEV)
             if decoder_layers or functional:            # functional split path: equals the released forward (verified)
                 pm = P.block_mask_rates(ids, 32, generator=gv); u = torch.rand(ids.shape, device=ids.device, generator=gv)
@@ -526,6 +530,12 @@ if __name__ == "__main__":
     p.add_argument("command", choices=["prepare", "smoke", "train", "gen", "verify"])
     p.add_argument("arm", nargs="?", default="base")
     p.add_argument("--name", default="lora_r32")
+    p.add_argument("--seed", type=int, default=SEED, help="train: torch, mask and order seed (same --limit examples)")
+    p.add_argument("--data", default="", help="train: folder holding train.jsonl / val.jsonl (default: the textdiff folder)")
+    p.add_argument("--max-len", type=int, default=2048, help="train: longest example in tokens; longer ones are skipped")
+    p.add_argument("--val-batch", type=int, default=8, help="train: validation batch (1-2 for the multi-thousand-token LLM-format rows)")
+    p.add_argument("--empty-cache-every", type=int, default=25, help="train: release the Metal cache every N steps (1 keeps the "
+                   "footprint low enough not to swap with the long LLM-format rows; same math)")
     p.add_argument("--adapter", default="final")
     p.add_argument("--tag", default="", help="pool: write gen/<name>_pool_<arm>.jsonl for textdiff_battle.py stack")
     p.add_argument("--rank", type=int, default=32)
